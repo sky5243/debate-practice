@@ -42,8 +42,21 @@
             display: flex; justify-content: space-around; background: #ecf0f1; 
             padding: 15px; border-radius: 10px; margin: 20px 0; font-weight: bold; font-size: 18px;
         }
+        .statement-box {
+            background-color: #eef6fb;
+            border-left: 5px solid #3498db;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 15px 0 10px 0;
+            font-size: 20px;
+            font-weight: bold;
+            color: #1a252f;
+            text-align: left;
+            line-height: 1.5;
+            display: none;
+        }
         .display-text { 
-            font-size: 22px; min-height: 60px; margin: 20px 0; color: #2c3e50; font-weight: bold; 
+            font-size: 22px; min-height: 50px; margin: 10px 0 20px 0; color: #e67e22; font-weight: bold; 
             display: flex; align-items: center; justify-content: center;
         }
         .interactive-area { display: none; margin: 20px 0; }
@@ -89,6 +102,8 @@
                     <option value="A">【單元 A】模組、格式用語</option>
                     <option value="B">【單元 B】模組內容</option>
                     <option value="C">【單元 C】論式的三段論述</option>
+                    <option value="D1">【單元 D1】三段論述推導</option>
+                    <option value="D2">【單元 D2】錯誤推論分析</option>
                 </select>
             </div>
 
@@ -113,6 +128,10 @@
             <span id="attemptDisplay">本題嘗試: 1</span>
         </div>
         
+        <!-- 顯示論式主題內容 -->
+        <div class="statement-box" id="statementBox"></div>
+
+        <!-- 顯示當前引導問題 -->
         <div class="display-text" id="displayText">請選擇單元開始</div>
         
         <div class="interactive-area" id="interactiveArea">
@@ -136,7 +155,7 @@
         </div>
     </div>
 
-    <!-- ES6 Module 主程式進入點 -->
+    <!-- 載入 ES6 主程式進入點 -->
     <script type="module" src="js/main.js"></script>
 </body>
 </html>
