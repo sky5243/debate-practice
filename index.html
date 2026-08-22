@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>辯論理路全題庫單元練習系統</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
         body { 
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
             background-color: #f4f7f6; 
@@ -24,176 +22,60 @@
             border-radius: 16px; 
             box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
         }
-        h1 {
-            margin-top: 0;
-            font-size: 26px;
-            color: #1a252f;
-        }
+        h1 { margin-top: 0; font-size: 26px; color: #1a252f; }
         .control-panel {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            background: #f8fafc;
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
+            display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+            gap: 10px; margin-bottom: 20px; background: #f8fafc; padding: 15px;
+            border-radius: 12px; border: 1px solid #e2e8f0;
         }
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
+        .control-group { display: flex; align-items: center; gap: 6px; }
         select, button { 
-            padding: 10px 14px; 
-            font-size: 16px; 
-            border-radius: 8px;
-            border: 1px solid #cbd5e1;
-            outline: none;
-            transition: all 0.2s ease;
+            padding: 10px 14px; font-size: 16px; border-radius: 8px;
+            border: 1px solid #cbd5e1; outline: none; transition: all 0.2s ease;
         }
-        select:focus {
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
-        }
-        #startBtn {
-            background-color: #3498db;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        #startBtn:hover {
-            background-color: #2980b9;
-        }
-        #stopBtn {
-            background-color: #e74c3c;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        #stopBtn:disabled {
-            background-color: #cbd5e1;
-            cursor: not-allowed;
-        }
+        select:focus { border-color: #3498db; box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2); }
+        #startBtn { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
+        #startBtn:hover { background-color: #2980b9; }
+        #stopBtn { background-color: #e74c3c; color: white; border: none; cursor: pointer; font-weight: bold; }
+        #stopBtn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .status-panel { 
-            display: flex; 
-            justify-content: space-around; 
-            background: #ecf0f1; 
-            padding: 15px; 
-            border-radius: 10px; 
-            margin: 20px 0; 
-            font-weight: bold; 
-            font-size: 18px;
+            display: flex; justify-content: space-around; background: #ecf0f1; 
+            padding: 15px; border-radius: 10px; margin: 20px 0; font-weight: bold; font-size: 18px;
         }
         .display-text { 
-            font-size: 22px; 
-            min-height: 60px; 
-            margin: 20px 0; 
-            color: #2c3e50; 
-            font-weight: bold; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-size: 22px; min-height: 60px; margin: 20px 0; color: #2c3e50; font-weight: bold; 
+            display: flex; align-items: center; justify-content: center;
         }
-        .interactive-area { 
-            display: none; 
-            margin: 20px 0; 
-        }
-        .input-wrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            max-width: 580px;
-            margin: 15px auto;
-        }
-        #userAnswerInput { 
-            flex: 1; 
-            font-size: 18px; 
-            padding: 12px 16px; 
-            border: 2px solid #3498db; 
-            border-radius: 10px; 
-            outline: none;
-        }
-        #userAnswerInput:focus {
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25);
-        }
+        .interactive-area { display: none; margin: 20px 0; }
+        .input-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 580px; margin: 15px auto; }
+        #userAnswerInput { flex: 1; font-size: 18px; padding: 12px 16px; border: 2px solid #3498db; border-radius: 10px; outline: none; }
+        #userAnswerInput:focus { box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25); }
         .icon-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 48px;
-            height: 48px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            padding: 0;
-            flex-shrink: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 48px; height: 48px; border-radius: 10px; border: none; cursor: pointer;
+            transition: all 0.2s ease; padding: 0; flex-shrink: 0;
         }
-        .mic-btn {
-            background-color: #e2e8f0;
-            color: #475569;
-        }
-        .mic-btn:hover {
-            background-color: #cbd5e1;
-        }
-        .mic-btn.recording {
-            background-color: #ef4444;
-            color: white;
-            animation: pulse 1.2s infinite;
-        }
+        .mic-btn { background-color: #e2e8f0; color: #475569; }
+        .mic-btn:hover { background-color: #cbd5e1; }
+        .mic-btn.recording { background-color: #ef4444; color: white; animation: pulse 1.2s infinite; }
         @keyframes pulse {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        .send-btn {
-            background-color: #27ae60;
-            color: white;
-        }
-        .send-btn:hover {
-            background-color: #219150;
-        }
+        .send-btn { background-color: #27ae60; color: white; }
+        .send-btn:hover { background-color: #219150; }
         .repeat-btn {
-            background-color: #f39c12;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-weight: bold;
-            cursor: pointer;
-            border-radius: 8px;
-            margin-bottom: 10px;
+            background-color: #f39c12; color: white; border: none; padding: 10px 20px;
+            font-weight: bold; cursor: pointer; border-radius: 8px; margin-bottom: 10px;
         }
-        .repeat-btn:hover {
-            background-color: #d68910;
-        }
-        .speech-hint {
-            font-size: 14px;
-            color: #64748b;
-            min-height: 20px;
-            margin-top: 4px;
-        }
+        .repeat-btn:hover { background-color: #d68910; }
+        .speech-hint { font-size: 14px; color: #64748b; min-height: 20px; margin-top: 4px; }
         .review-panel { 
-            background: #fff8e1; 
-            border: 2px solid #ffb300; 
-            border-radius: 12px; 
-            padding: 20px; 
-            margin: 20px 0; 
-            display: none; 
-            text-align: left; 
+            background: #fff8e1; border: 2px solid #ffb300; border-radius: 12px; 
+            padding: 20px; margin: 20px 0; display: none; text-align: left; 
         }
-        .review-row { 
-            margin-bottom: 10px; 
-            padding-bottom: 8px; 
-            border-bottom: 1px dashed #ffe082; 
-            font-size: 15px; 
-            line-height: 1.5;
-        }
+        .review-row { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed #ffe082; font-size: 15px; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -204,9 +86,9 @@
             <div class="control-group">
                 <label for="unitSelect">單元：</label>
                 <select id="unitSelect">
-                    <option value="A">【單元 A】模組、格式用語 (30題)</option>
-                    <option value="B">【單元 B】模組內容 (30題)</option>
-                    <option value="C">【單元 C】論式的三段論述 (30題)</option>
+                    <option value="A">【單元 A】模組、格式用語</option>
+                    <option value="B">【單元 B】模組內容</option>
+                    <option value="C">【單元 C】論式的三段論述</option>
                 </select>
             </div>
 
@@ -238,26 +120,13 @@
             
             <div class="input-wrapper">
                 <input type="text" id="userAnswerInput" placeholder="輸入或使用語音答題..." autocomplete="off">
-                
-                <!-- 麥克風語音輸入按鈕 -->
                 <button type="button" class="icon-btn mic-btn" id="micBtn" title="點擊進行語音辨識">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                        <line x1="12" y1="19" x2="12" y2="23"></line>
-                        <line x1="8" y1="23" x2="16" y2="23"></line>
-                    </svg>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                 </button>
-                
-                <!-- 送出答案按鈕 -->
                 <button type="button" class="icon-btn send-btn" id="submitAnsBtn" title="送出答案">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"></line>
-                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                    </svg>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </div>
-            
             <div class="speech-hint" id="speechHint"></div>
         </div>
         
@@ -267,356 +136,7 @@
         </div>
     </div>
 
-    <script>
-        const fullQuestionBank = {
-            "A": [
-                { statement: "聲音有法，應當是無常，因為是所作的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "聲音應當是無常，因為是所作的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "應當是無常，因為是所作的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是色法的話應當遍是所作。", questions: ["有哪幾個模組？"], answers: ["1"] },
-                { statement: "是色法的話應當遍是常法，因為是所知的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "所知有法，應當是無我，因為存在的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "所知應當是常法，因為是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "瓶子有法，應當是無。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是實事的話應當遍是無，因為是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "瓶子應當是心不相應行法。", questions: ["有哪幾個模組？"], answers: ["1"] },
-                { statement: "遍智有法，應當是無我，因為存在的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "遍智應當不是常法，因為是心識的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是心識的話應當遍是所作，因為是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "虛空有法，應當是所知，因為不是無常的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "是色法的話應當遍是物質，因為瓶子是色法的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "瓶子有法，應當不是心不相應行法。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "應當是無我，因為瓶子是心不相應行法的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是物質的話應當不遍是色法，因為聲音是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "常法應當不存在，因為瓶子是心識的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是常法的話應當遍是無，因為是無常的話遍是所知的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "瓶子有法，應當不是成實，因為是有的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "聲音有法，應當不是無，因為是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "柱子有法，應當是覺知，因為是所知的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "聲音應當不是無，因為是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "聲音應當不是無，因為聲音是無我的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "是所知的話應當不遍是心不相應行法。", questions: ["有哪幾個模組？"], answers: ["1"] },
-                { statement: "是無我的話應當遍是常法，因為兔子角是有的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] },
-                { statement: "兔子角有法，應當是有，因為是明了的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "虛空有法，應當是無常，因為是有的緣故。", questions: ["有哪幾個模組？"], answers: ["3"] },
-                { statement: "是有的話應當遍是無常，因為是成實的話遍不是常法的緣故。", questions: ["有哪幾個模組？"], answers: ["2"] }
-            ],
-            "B": [
-                { statement: "聲音有法，應當是無常，因為是所作的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["聲音", "是無常", "是所作"] },
-                { statement: "聲音應當是無常，因為是所作的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "聲音是無常", "是所作"] },
-                { statement: "應當是無常，因為是所作的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是無常", "是所作"] },
-                { statement: "是色法的話應當遍是所作。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是色法的話遍是所作", ""] },
-                { statement: "是色法的話應當遍是常法，因為是所知的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是色法的話遍是常法", "是所知"] },
-                { statement: "所知有法，應當是無我，因為存在的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["所知", "是無我", "存在"] },
-                { statement: "所知應當是常法，因為是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "所知是常法", "是無我"] },
-                { statement: "瓶子有法，應當是無。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["瓶子", "是無", ""] },
-                { statement: "是實事的話應當遍是無，因為是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是實事的話遍是無", "是無我"] },
-                { statement: "瓶子應當是心不相應行法。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "瓶子是心不相應行法", ""] },
-                { statement: "遍智有法，應當是無我，因為存在的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["遍智", "是無我", "存在"] },
-                { statement: "遍智應當不是常法，因為是心識的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "遍智不是常法", "是心識"] },
-                { statement: "是心識的話應當遍是所作，因為是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是心識的話遍是所作", "是無我"] },
-                { statement: "虛空有法，應當是所知，因為不是無常的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["虛空", "是所知", "不是無常"] },
-                { statement: "是色法的話應當遍是物質，因為瓶子是色法的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是色法的話遍是物質", "瓶子是色法"] },
-                { statement: "瓶子有法，應當不是心不相應行法。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["瓶子", "不是心不相應行法", ""] },
-                { statement: "應當是無我，因為瓶子是心不相應行法的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是無我", "瓶子是心不相應行法"] },
-                { statement: "是物質的話應當不遍是色法，因為聲音是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是物質的話不遍是色法", "聲音是無我"] },
-                { statement: "常法應當不存在，因為瓶子是心識的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "常法不存在", "瓶子是心識"] },
-                { statement: "是常法的話應當遍是無，因為是無常的話遍是所知的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是常法的話遍是無", "是無常的話遍是所知"] },
-                { statement: "瓶子有法，應當不是成實，因為是有的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["瓶子", "不是成實", "是有"] },
-                { statement: "聲音有法，應當不是無，因為是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["聲音", "不是無", "是無我"] },
-                { statement: "柱子有法，應當是覺知，因為是所知的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["柱子", "是覺知", "是所知"] },
-                { statement: "聲音應當不是無，因為是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "聲音不是無", "是無我"] },
-                { statement: "聲音應當不是無，因為聲音是無我的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "聲音不是無", "聲音是無我"] },
-                { statement: "是所知的話應當不遍是心不相應行法。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是所知的話不遍是心不相應行法", ""] },
-                { statement: "是無我的話應當遍是常法，因為兔子角是有的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是無我的話遍是常法", "兔子角是有"] },
-                { statement: "兔子角有法，應當是有，因為是明了的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["兔子角", "是有", "是明了"] },
-                { statement: "虛空有法，應當是無常，因為是有的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["虛空", "是無常", "是有"] },
-                { statement: "是有的話應當遍是無常，因為是成實的話遍不是常法的緣故。", questions: ["所諍事要安立什麼？", "所顯法要安立什麼？", "因要安立什麼？"], answers: ["", "是有的話遍是無常", "是成實的話遍不是常法"] }
-            ],
-            "C": [
-                { statement: "聲音有法，應當是無常，因為是所作的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["聲音是無常", "聲音是所作", "是所作的話遍是無常"] },
-                { statement: "聲音應當是無常，因為是所作的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["聲音是無常", "是所作", "是所作的話遍聲音是無常"] },
-                { statement: "應當是無常，因為是所作的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是無常", "是所作", "是所作的話遍是無常"] },
-                { statement: "是色法的話應當遍是所作。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是色法的話遍是所作", "", ""] },
-                { statement: "是色法的話應當遍是常法，因為是所知的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是色法的話遍是常法", "是所知", "是所知的話遍是色法的話遍是常法"] },
-                { statement: "所知有法，應當是無我，因為存在的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["所知是無我", "所知存在", "存在的話遍是無我"] },
-                { statement: "所知應當是常法，因為是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["所知是常法", "是無我", "是無我的話遍所知是常法"] },
-                { statement: "瓶子有法，應當是無。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["瓶子是無", "", ""] },
-                { statement: "是實事的話應當遍是無，因為是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是實事的話遍是無", "是無我", "是無我的話遍是實事的話遍是無"] },
-                { statement: "瓶子應當是心不相應行法。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["瓶子是心不相應行法", "", ""] },
-                { statement: "遍智有法，應當是無我，因為存在的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["遍智是無我", "遍智存在", "存在的話遍是無我"] },
-                { statement: "遍智應當不是常法，因為是心識的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["遍智不是常法", "是心識", "是心識的話遍遍智不是常法"] },
-                { statement: "是心識的話應當遍是所作，因為是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是心識的話遍是所作", "智慧是無我", "是無我的話遍是心識的話遍是所作"] },
-                { statement: "虛空有法，應當是所知，因為不是無常的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["虛空是所知", "虛空不是無常", "不是無常的話遍是所知"] },
-                { statement: "是色法的話應當遍是物質，因為瓶子是色法的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是色法的話遍是物質", "瓶子是色法", "瓶子是色法的話遍是色法的話遍是物質"] },
-                { statement: "瓶子有法，應當不是心不相應行法。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["瓶子不是心不相應行法", "", ""] },
-                { statement: "應當是無我，因為瓶子是心不相應行法的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是無我", "瓶子是心不相應行法", "瓶子是心不相應行法的話遍是無我"] },
-                { statement: "是物質的話應當不遍是色法，因為聲音是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是物質的話不遍是色法", "聲音是無我", "聲音是無我的話遍是物質的話不遍是色法"] },
-                { statement: "常法應當不存在，因為瓶子是心識的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["常法不存在", "瓶子是心識", "瓶子是心識的話遍常法不存在"] },
-                { statement: "是常法的話應當遍是無，因為是無常的話遍是所知的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是常法的話遍是無", "是無常的話遍是所知", "是無常的話遍是所知的話遍是常法的話遍是無"] },
-                { statement: "瓶子有法，應當不是成實，因為是有的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["瓶子不是成實", "瓶子是有", "是有的話遍不是成實"] },
-                { statement: "聲音有法，應當不是無，因為是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["聲音不是無", "聲音是無我", "是無我的話遍不是無"] },
-                { statement: "柱子有法，應當是覺知，因為是所知的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["柱子是覺知", "柱子是所知", "是所知的話遍是覺知"] },
-                { statement: "聲音應當不是無，因為是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["聲音不是無", "是無我", "是無我的話遍聲音不是無"] },
-                { statement: "聲音應當不是無，因為聲音是無我的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["聲音不是無", "聲音是無我", "聲音是無我的話遍聲音不是無"] },
-                { statement: "是所知的話應當不遍是心不相應行法。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是所知的話不遍是心不相應行法", "", ""] },
-                { statement: "是無我的話應當遍是常法，因為兔子角是有的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是無我的話遍是常法", "兔子角是有", "兔子角是有的話遍是無我的話遍是常法"] },
-                { statement: "兔子角有法，應當是有，因為是明了的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["兔子角是有", "兔子角是明了", "是明了的話遍是有"] },
-                { statement: "虛空有法，應當是無常，因為是有的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["虛空是無常", "虛空是有", "是有的話遍是無常"] },
-                { statement: "是有的話應當遍是無常，因為是成實的話遍不是常法的緣故。", questions: ["宗要安立什麼？", "因要安立什麼？", "周遍要安立什麼？"], answers: ["是有的話遍是無常", "是成實的話遍不是常法", "是成實的話遍不是常法的話遍是有的話遍是無常"] }
-            ]
-        };
-
-        let currentUnit = "A", currentQ = null, subQIndex = 0, userSessionRecords = [], streak = 0, attempts = 1, isPracticing = false;
-        let lastQuestionIndex = -1;
-        let recognition = null;
-        let isListening = false;
-
-        const startBtn = document.getElementById('startBtn'), stopBtn = document.getElementById('stopBtn'), unitSelect = document.getElementById('unitSelect');
-        const rateSelect = document.getElementById('rateSelect');
-        const userAnswerInput = document.getElementById('userAnswerInput');
-        const micBtn = document.getElementById('micBtn');
-        const speechHint = document.getElementById('speechHint');
-
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'zh-TW';
-            recognition.continuous = false;
-            recognition.interimResults = false;
-
-            recognition.onstart = () => {
-                isListening = true;
-                micBtn.classList.add('recording');
-                speechHint.innerText = "🎙️ 正在聆聽中，請說出答案...";
-            };
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                // 清除常見標點符號
-                const cleanText = transcript.replace(/[。，！？]/g, '').trim();
-                userAnswerInput.value = cleanText;
-                speechHint.innerText = `辨識結果："${cleanText}"`;
-            };
-
-            recognition.onerror = (event) => {
-                isListening = false;
-                micBtn.classList.remove('recording');
-                if (event.error === 'no-speech') {
-                    speechHint.innerText = "⚠️ 未檢測到聲音，請再試一次。";
-                } else if (event.error === 'not-allowed') {
-                    speechHint.innerText = "⚠️ 麥克風權限被阻擋，請開啟瀏覽器麥克風存取權。";
-                } else {
-                    speechHint.innerText = `⚠️ 語音辨識錯誤：${event.error}`;
-                }
-            };
-
-            recognition.onend = () => {
-                isListening = false;
-                micBtn.classList.remove('recording');
-            };
-        } else {
-            speechHint.innerText = "您的瀏覽器不支援 Web Speech API 語音辨識，請使用 Chrome/Edge 瀏覽器。";
-        }
-
-        micBtn.onclick = () => {
-            if (!recognition) {
-                alert("您的瀏覽器暫不支援語音辨識功能，請手動輸入或使用 Chrome 瀏覽器。");
-                return;
-            }
-            if (isListening) {
-                recognition.stop();
-            } else {
-                try {
-                    recognition.start();
-                } catch (e) {
-                    recognition.stop();
-                }
-            }
-        };
-
-        startBtn.onclick = () => {
-            isPracticing = true; streak = 0; attempts = 1; currentUnit = unitSelect.value;
-            startBtn.disabled = true; stopBtn.disabled = false; unitSelect.disabled = true;
-            document.getElementById('streakDisplay').innerText = `連續通過: ${streak} / 10`;
-            startNewQuestion();
-        };
-
-        function startNewQuestion() {
-            document.getElementById('reviewPanel').style.display = 'none';
-            document.getElementById('interactiveArea').style.display = 'none';
-            document.getElementById('reviewContent').innerHTML = "";
-            userAnswerInput.value = "";
-            speechHint.innerText = "";
-            
-            const list = fullQuestionBank[currentUnit];
-            let newIndex;
-            do {
-                newIndex = Math.floor(Math.random() * list.length);
-            } while (list.length > 1 && newIndex === lastQuestionIndex);
-            
-            lastQuestionIndex = newIndex;
-            currentQ = list[newIndex];
-            subQIndex = 0; attempts = 1; userSessionRecords = [];
-            
-            document.getElementById('attemptDisplay').innerText = `本題嘗試: ${attempts}`;
-            askQuestion(true);
-        }
-
-        function speakText(text, callback) {
-            window.speechSynthesis.cancel();
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'zh-TW';
-            utter.rate = parseFloat(rateSelect.value) || 1.25;
-            utter.onend = callback;
-            window.speechSynthesis.speak(utter);
-        }
-
-        function askQuestion(readStatement) {
-            userAnswerInput.value = ""; 
-            speechHint.innerText = "";
-            document.getElementById('interactiveArea').style.display = 'none';
-            
-            let text = (readStatement ? currentQ.statement + "， " : "") + currentQ.questions[subQIndex];
-            speakText(text, () => {
-                document.getElementById('interactiveArea').style.display = 'block';
-                userAnswerInput.value = ""; 
-                userAnswerInput.focus();
-                document.getElementById('displayText').innerText = "🎧 答題中...（請依語音作答或點擊麥克風）";
-            });
-        }
-
-        document.getElementById('repeatBtn').onclick = () => {
-            if(!isPracticing) return;
-            attempts++;
-            if (attempts > 3) {
-                streak = 0;
-                document.getElementById('streakDisplay').innerText = `連續通過: ${streak} / 10`;
-            }
-            document.getElementById('attemptDisplay').innerText = `本題嘗試: ${attempts}`;
-            document.getElementById('interactiveArea').style.display = 'none';
-            let text = currentQ.statement + "， " + currentQ.questions[subQIndex];
-            speakText(text, () => {
-                document.getElementById('interactiveArea').style.display = 'block';
-                userAnswerInput.value = "";
-                userAnswerInput.focus();
-            });
-        };
-
-        document.getElementById('submitAnsBtn').onclick = () => {
-            if (isListening && recognition) {
-                recognition.stop();
-            }
-            const val = userAnswerInput.value.trim();
-            const std = currentQ.answers[subQIndex];
-            const isCorrect = isAnswerCorrect(val, std, currentUnit);
-
-            userSessionRecords.push({ q: currentQ.questions[subQIndex], ans: val, correct: isCorrect, std: std === "" ? "(留空/無法安立)" : std });
-            
-            if (++subQIndex < currentQ.questions.length) {
-                askQuestion(false);
-            } else {
-                showReviewPanel();
-            }
-        };
-
-        // 智慧答案比對函數：支援數字與口語化表達（如「兩個」、「兩種」、「我猜是2」等）
-        function isAnswerCorrect(userAns, stdAns, unit) {
-            const rawVal = userAns.trim();
-            const rawStd = stdAns.trim();
-
-            // 完全精確比對，或兩者皆留空
-            if (rawVal === rawStd || (rawStd === "" && rawVal === "")) {
-                return true;
-            }
-
-            // 針對阿拉伯數字型標準答案（如單元 A 的 "1", "2", "3"）進行國字與口語化比對
-            if (/^\d+$/.test(rawStd)) {
-                let normalized = rawVal
-                    .replace(/一/g, '1')
-                    .replace(/二|兩|雙/g, '2')
-                    .replace(/三/g, '3')
-                    .replace(/四/g, '4')
-                    .replace(/五/g, '5');
-                
-                const foundDigits = normalized.match(/\d+/g);
-                if (foundDigits && foundDigits.includes(rawStd)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        userAnswerInput.onkeydown = (e) => {
-            if (e.key === 'Enter') {
-                document.getElementById('submitAnsBtn').click();
-            }
-        };
-
-        function showReviewPanel() {
-            document.getElementById('interactiveArea').style.display = 'none';
-            const allCorrect = userSessionRecords.every(r => r.correct);
-            
-            let html = "";
-            userSessionRecords.forEach((rec, idx) => {
-                html += `<div class="review-row">
-                    <strong>Q${idx + 1}: ${rec.question || rec.q}</strong><br>
-                    👉 您的輸入：<span style="color: #2980b9;">${rec.ans || "(未填)"}</span><br>
-                    🎯 標準答案：<span style="color: #27ae60; font-weight: bold;">${rec.std}</span>
-                </div>`;
-            });
-            document.getElementById('reviewContent').innerHTML = html;
-            document.getElementById('reviewPanel').style.display = 'block';
-
-            if (allCorrect) {
-                if (attempts <= 3) {
-                    streak++;
-                } else {
-                    streak = 0;
-                }
-                
-                document.getElementById('streakDisplay').innerText = `連續通過: ${streak} / 10`;
-
-                if (streak >= 10) {
-                    document.getElementById('reviewTitle').innerText = "🏆 恭喜您！成功通過本單元的測試！";
-                    speakText("恭喜您通過本單元的測試，請重新選擇練習單元", () => {
-                        stopPractice();
-                    });
-                } else {
-                    document.getElementById('reviewTitle').innerText = attempts <= 3 ? "🎉 本題完全答對！" : "⚠️ 答對但嘗試超過3次，連續次數重置！";
-                    speakText("太棒了", () => setTimeout(startNewQuestion, 1500));
-                }
-            } else {
-                // 答錯時增嘗試次數；若超過 3 次則連續數歸零，但永遠允許繼續練習本題
-                attempts++;
-                if (attempts > 3) {
-                    streak = 0;
-                    document.getElementById('streakDisplay').innerText = `連續通過: ${streak} / 10`;
-                }
-                document.getElementById('attemptDisplay').innerText = `本題嘗試: ${attempts}`;
-                
-                document.getElementById('reviewTitle').innerText = attempts <= 3 ? "❌ 答錯了，請再試一次本題！" : "⚠️ 嘗試已超過3次，連續次數歸零！請繼續嘗試本題。";
-                speakText("答錯了，請再試一次", () => setTimeout(() => { 
-                    document.getElementById('reviewPanel').style.display = 'none'; 
-                    subQIndex = 0; 
-                    userSessionRecords = [];
-                    askQuestion(true); 
-                }, 1500));
-            }
-        }
-
-        stopBtn.onclick = stopPractice;
-
-        function stopPractice() {
-            isPracticing = false;
-            if (isListening && recognition) recognition.stop();
-            window.speechSynthesis.cancel();
-            startBtn.disabled = false; stopBtn.disabled = true; unitSelect.disabled = false;
-            document.getElementById('interactiveArea').style.display = 'none';
-            document.getElementById('reviewPanel').style.display = 'none';
-            document.getElementById('displayText').innerText = "請選擇單元開始練習";
-        }
-    </script>
+    <!-- ES6 Module 主程式進入點 -->
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>
