@@ -1,6 +1,3 @@
-/**
- * 計分與嘗試次數邏輯模組
- */
 export class ScoreManager {
     constructor(threshold = 10) {
         this.streakThreshold = threshold;
@@ -8,7 +5,11 @@ export class ScoreManager {
         this.attempts = 1;
     }
 
-    resetSession() {
+    // 重置練習會話：若有傳入新 threshold 則更新，否則維持原設定
+    resetSession(threshold) {
+        if (threshold !== undefined && threshold !== null) {
+            this.streakThreshold = threshold;
+        }
         this.streak = 0;
         this.attempts = 1;
     }
@@ -19,24 +20,12 @@ export class ScoreManager {
 
     incrementAttempt() {
         this.attempts++;
-        if (this.attempts > 3) {
-            this.streak = 0; // 超過 3 次嘗試，連續次數歸零
-        }
         return this.attempts;
     }
 
     recordResult(isAllCorrect) {
         if (isAllCorrect) {
-            if (this.attempts <= 3) {
-                this.streak++;
-            } else {
-                this.streak = 0;
-            }
-        } else {
-            this.attempts++;
-            if (this.attempts > 3) {
-                this.streak = 0;
-            }
+            this.streak++;
         }
         return {
             streak: this.streak,

@@ -66,6 +66,8 @@ function startPractice() {
     
     sequentialIndex = 0;
     const targetTotal = currentConfig.targetCount || (currentConfig.isSequential ? currentQuestionList.length : 10);
+    
+    // 重置計分器並明確帶入該單元的目標題數 (避免觸發預設值 10)
     scoreManager.resetSession(targetTotal);
 
     startBtn.disabled = true;
