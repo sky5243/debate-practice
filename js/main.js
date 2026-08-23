@@ -45,7 +45,7 @@ userAnswerInput.onkeydown = (e) => {
     if (e.key === 'Enter') handleSubmitAnswer(); 
 };
 
-// 網頁載入時自動讀取預設單元預覽
+// 自動讀取預設單元預覽
 updateUnitPreview();
 
 function updateUnitPreview() {
@@ -67,7 +67,6 @@ function startPractice() {
     sequentialIndex = 0;
     const targetTotal = currentConfig.targetCount || (currentConfig.isSequential ? currentQuestionList.length : 10);
     
-    // 重置計分器並明確帶入該單元的目標題數 (避免觸發預設值 10)
     scoreManager.resetSession(targetTotal);
 
     startBtn.disabled = true;
@@ -139,8 +138,12 @@ function askSubQuestion(readStatement) {
     speechHint.innerText = "";
     interactiveArea.style.display = 'none';
 
-    statementBox.innerText = `【論式】${currentQ.statement}`;
-    statementBox.style.display = 'block';
+    if (currentConfig.showStatement) {
+        statementBox.innerText = `【論式】${currentQ.statement}`;
+        statementBox.style.display = 'block';
+    } else {
+        statementBox.style.display = 'none';
+    }
 
     displayText.innerText = `👉 請回答：【${currentQ.questions[subQIndex]}】`;
 
@@ -156,7 +159,7 @@ function askSubQuestion(readStatement) {
 
 function handleRepeat() {
     if (!isPracticing) return;
-    scoreManager.incrementAttempt();
+    scoreManager.incrementAttempt(currentConfig.isSequential);
     updateStatusDisplay();
 
     interactiveArea.style.display = 'none';
@@ -222,7 +225,7 @@ function handleSubmitAnswer() {
 function showReviewPanel() {
     interactiveArea.style.display = 'none';
     const allCorrect = userSessionRecords.every(r => r.correct);
-    const scoreResult = scoreManager.recordResult(allCorrect);
+    const scoreResult = scoreManager.recordResult(allCorrect, currentConfig.isSequential);
 
     updateStatusDisplay();
 
@@ -240,6 +243,7 @@ function showReviewPanel() {
 
     if (allCorrect) {
         if (currentConfig.isSequential) {
+            // 循序單元（D1, D2）
             sequentialIndex++;
             if (sequentialIndex >= currentQuestionList.length) {
                 reviewTitle.innerText = "🏆 恭喜您！成功順利完成本單元的所有練習題！";
@@ -249,7 +253,11 @@ function showReviewPanel() {
                 speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
             }
         } else {
-            if (scoreResult.isPassed) {
+            // 隨機單元（A, B, C）
+            if (scoreManager.attempts > 3) {
+                reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！進入下一題...";
+                speechService.speak("嘗試超過三次，連續次數歸零，進入下一題", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+            } else if (scoreResult.isPassed) {
                 reviewTitle.innerText = "🏆 恭喜您！成功通過本單元的測試！";
                 speechService.speak("恭喜您通過本單元的測試，請重新選擇練習單元", rateSelect.value, () => { stopPractice(); });
             } else {
@@ -258,16 +266,31 @@ function showReviewPanel() {
             }
         }
     } else {
-        reviewTitle.innerText = "❌ 有答錯的子題，請再試一次本題！";
-        scoreManager.incrementAttempt();
-        speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
-            setTimeout(() => {
-                reviewPanel.style.display = 'none';
-                subQIndex = 0;
-                userSessionRecords = [];
-                updateStatusDisplay();
-                askSubQuestion(true);
-            }, 1500);
-        });
+        // 答錯邏輯：無論是循序或隨機單元，皆【留在本題重試】直到答對為止！
+        if (currentConfig.isSequential) {
+            reviewTitle.innerText = "❌ 有答錯的子題，請再試一次本題！";
+            scoreManager.incrementAttempt(true);
+            speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
+                setTimeout(() => {
+                    reviewPanel.style.display = 'none';
+                    subQIndex = 0;
+                    userSessionRecords = [];
+                    updateStatusDisplay();
+                    askSubQuestion(true);
+                }, 1500);
+            });
+        } else {
+            reviewTitle.innerText = "❌ 答錯了！連續通過次數歸零，請繼續挑戰本題！";
+            scoreManager.incrementAttempt(false);
+            speechService.speak("答錯了，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
+                setTimeout(() => {
+                    reviewPanel.style.display = 'none';
+                    subQIndex = 0;
+                    userSessionRecords = [];
+                    updateStatusDisplay();
+                    askSubQuestion(true);
+                }, 1500);
+            });
+        }
     }
 }
