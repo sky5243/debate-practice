@@ -3,6 +3,7 @@ export class ScoreManager {
         this.streakThreshold = threshold;
         this.streak = 0;
         this.attempts = 1;
+        this.hasResetForCurrentQ = false; // 記錄本題是否已觸發過歸零提示
     }
 
     // 重置練習會話
@@ -12,38 +13,40 @@ export class ScoreManager {
         }
         this.streak = 0;
         this.attempts = 1;
+        this.hasResetForCurrentQ = false;
     }
 
+    // 開始新的一題時重置本題嘗試狀態
     startNewQuestion() {
         this.attempts = 1;
+        this.hasResetForCurrentQ = false;
     }
 
-    // 增加嘗試次數；若是隨機單元且嘗試 > 3，連續歸零
+    // 增加嘗試次數
     incrementAttempt(isSequential = false) {
         this.attempts++;
+        let justResetStreak = false;
+
+        // 若為隨機單元且嘗試次數達到 4 次（超過 3 次）
         if (!isSequential && this.attempts > 3) {
-            this.streak = 0; // 隨機單元超過 3 次嘗試，連續紀錄歸零
+            if (!this.hasResetForCurrentQ) {
+                this.streak = 0; // 連續紀錄歸零
+                this.hasResetForCurrentQ = true;
+                justResetStreak = true; // 標記「剛好第一次歸零」
+            }
         }
-        return this.attempts;
+
+        return {
+            attempts: this.attempts,
+            justResetStreak: justResetStreak
+        };
     }
 
+    // 紀錄作答結果
     recordResult(isAllCorrect, isSequential = false) {
-        if (isSequential) {
-            // 循序單元：只要答對進度就 +1，不因嘗試次數歸零
-            if (isAllCorrect) {
-                this.streak++;
-            }
-        } else {
-            // 隨機單元：全對且嘗試 <= 3 才算連續通過；否則歸零
-            if (isAllCorrect) {
-                if (this.attempts <= 3) {
-                    this.streak++;
-                } else {
-                    this.streak = 0; // 雖然最後答對，但嘗試 > 3 次，連續次數歸零
-                }
-            } else {
-                this.streak = 0; // 答錯，連續次數歸零
-            }
+        if (isAllCorrect) {
+            // 只要本題三個子題全對，連續次數一律 +1！
+            this.streak++;
         }
 
         return {

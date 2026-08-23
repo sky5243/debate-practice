@@ -160,12 +160,16 @@ function askSubQuestion(readStatement) {
 
 function handleRepeat() {
     if (!isPracticing) return;
-    scoreManager.incrementAttempt(currentConfig.isSequential);
+    const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
     updateStatusDisplay();
+
+    if (incResult.justResetStreak) {
+        speechHint.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數已歸零！";
+    }
 
     interactiveArea.style.display = 'none';
     const speechText = getSpeechQuestionText(subQIndex);
-    const textToSpeak = currentQ.statement + "， " + speechText;
+    const textToSpeak = (currentConfig.showStatement ? currentQ.statement + "， " : "") + speechText;
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
         interactiveArea.style.display = 'block';
@@ -223,13 +227,7 @@ function handleSubmitAnswer() {
     }
 }
 
-function showReviewPanel() {
-    interactiveArea.style.display = 'none';
-    const allCorrect = userSessionRecords.every(r => r.correct);
-    const scoreResult = scoreManager.recordResult(allCorrect, currentConfig.isSequential);
-
-    updateStatusDisplay();
-
+function renderReviewRows() {
     let html = "";
     userSessionRecords.forEach((rec, idx) => {
         const statusIcon = rec.correct ? "✅" : "❌";
@@ -240,11 +238,21 @@ function showReviewPanel() {
         </div>`;
     });
     reviewContent.innerHTML = html;
-    reviewPanel.style.display = 'block';
+}
+
+function showReviewPanel() {
+    interactiveArea.style.display = 'none';
+    const allCorrect = userSessionRecords.every(r => r.correct);
 
     if (allCorrect) {
+        // 全對：紀錄成績（連續次數 +1）
+        const scoreResult = scoreManager.recordResult(true, currentConfig.isSequential);
+        updateStatusDisplay();
+
+        renderReviewRows();
+        reviewPanel.style.display = 'block';
+
         if (currentConfig.isSequential) {
-            // 循序單元（D1, D2）
             sequentialIndex++;
             if (sequentialIndex >= currentQuestionList.length) {
                 reviewTitle.innerText = "🏆 恭喜您！成功順利完成本單元的所有練習題！";
@@ -254,52 +262,42 @@ function showReviewPanel() {
                 speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
             }
         } else {
-            // 隨機單元（A, B, C）
-            if (scoreManager.attempts > 3) {
-                reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請重新挑戰本題...";
-                speechService.speak("嘗試超過三次，連續次數歸零，請重新挑戰本題", rateSelect.value, () => {
-                    setTimeout(() => {
-                        reviewPanel.style.display = 'none';
-                        subQIndex = 0;
-                        userSessionRecords = [];
-                        updateStatusDisplay();
-                        askSubQuestion(true);
-                    }, 1500);
-                });
-            } else if (scoreResult.isPassed) {
+            if (scoreResult.isPassed) {
                 reviewTitle.innerText = "🏆 恭喜您！成功通過本單元的測試！";
                 speechService.speak("恭喜您通過本單元的測試，請重新選擇練習單元", rateSelect.value, () => { stopPractice(); });
             } else {
-                reviewTitle.innerText = "🎉 本題完全答對！";
-                speechService.speak("太棒了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+                reviewTitle.innerText = "🎉 本題完全答對！進度 +1，準備進入下一題...";
+                speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
             }
         }
     } else {
-        // 答錯邏輯：無論是循序或隨機單元，皆【留在本題重試】直到答對為止！
-        if (currentConfig.isSequential) {
-            reviewTitle.innerText = "❌ 有答錯的子題，請再試一次本題！";
-            scoreManager.incrementAttempt(true);
-            speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
-                setTimeout(() => {
-                    reviewPanel.style.display = 'none';
-                    subQIndex = 0;
-                    userSessionRecords = [];
-                    updateStatusDisplay();
-                    askSubQuestion(true);
-                }, 1500);
+        // 有子題答錯：嘗試次數 +1，並檢查是否為第一次觸發歸零
+        const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
+        updateStatusDisplay();
+
+        renderReviewRows();
+        reviewPanel.style.display = 'block';
+
+        if (incResult.justResetStreak) {
+            // 剛好第 4 次嘗試，首次歸零提示
+            reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請繼續挑戰本題...";
+            speechService.speak("嘗試超過三次，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
+                setTimeout(retryCurrentQuestion, 1500);
             });
         } else {
-            reviewTitle.innerText = "❌ 答錯了！連續通過次數歸零，請繼續挑戰本題！";
-            scoreManager.incrementAttempt(false);
-            speechService.speak("答錯了，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
-                setTimeout(() => {
-                    reviewPanel.style.display = 'none';
-                    subQIndex = 0;
-                    userSessionRecords = [];
-                    updateStatusDisplay();
-                    askSubQuestion(true);
-                }, 1500);
+            // 一般答錯（第 1, 2, 3 次，或 5 次以上的常態答錯）
+            reviewTitle.innerText = "❌ 有答錯的子題，請繼續挑戰本題！";
+            speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
+                setTimeout(retryCurrentQuestion, 1500);
             });
         }
     }
+}
+
+function retryCurrentQuestion() {
+    reviewPanel.style.display = 'none';
+    subQIndex = 0;
+    userSessionRecords = [];
+    updateStatusDisplay();
+    askSubQuestion(true);
 }
