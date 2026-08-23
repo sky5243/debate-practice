@@ -138,6 +138,7 @@ function askSubQuestion(readStatement) {
     speechHint.innerText = "";
     interactiveArea.style.display = 'none';
 
+    // 依據單元配置顯示或隱藏【論式】
     if (currentConfig.showStatement) {
         statementBox.innerText = `【論式】${currentQ.statement}`;
         statementBox.style.display = 'block';
@@ -255,8 +256,16 @@ function showReviewPanel() {
         } else {
             // 隨機單元（A, B, C）
             if (scoreManager.attempts > 3) {
-                reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！進入下一題...";
-                speechService.speak("嘗試超過三次，連續次數歸零，進入下一題", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+                reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請重新挑戰本題...";
+                speechService.speak("嘗試超過三次，連續次數歸零，請重新挑戰本題", rateSelect.value, () => {
+                    setTimeout(() => {
+                        reviewPanel.style.display = 'none';
+                        subQIndex = 0;
+                        userSessionRecords = [];
+                        updateStatusDisplay();
+                        askSubQuestion(true);
+                    }, 1500);
+                });
             } else if (scoreResult.isPassed) {
                 reviewTitle.innerText = "🏆 恭喜您！成功通過本單元的測試！";
                 speechService.speak("恭喜您通過本單元的測試，請重新選擇練習單元", rateSelect.value, () => { stopPractice(); });
