@@ -29,11 +29,13 @@
             gap: 10px; margin-bottom: 20px; background: #f8fafc; padding: 15px;
             border-radius: 12px; border: 1px solid #e2e8f0;
         }
-        .control-group { display: flex; align-items: center; gap: 6px; }
+        .control-group { display: flex; align-items: center; gap: 6px; max-width: 100%; }
+        label { white-space: nowrap; flex-shrink: 0; }
         select, button { 
             padding: 10px 14px; font-size: 16px; border-radius: 8px;
             border: 1px solid #cbd5e1; outline: none; transition: all 0.2s ease;
         }
+        select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
         select:focus { border-color: #3498db; box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2); }
         #startBtn { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
         #startBtn:hover { background-color: #2980b9; }
