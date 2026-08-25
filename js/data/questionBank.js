@@ -5,6 +5,8 @@ import { unitD1 } from './unitD1.js';
 import { unitD2 } from './unitD2.js';
 import { unitE1, unitE1Text } from './unitE1.js';
 import { unitE2, unitE2TreeData } from './unitE2.js';
+import { unitF1 } from './unitF1.js';
+import { unitF2 } from './unitF2.js';
 
 export const unitConfigs = {
     "A": {
@@ -51,6 +53,18 @@ export const unitConfigs = {
         showStatement: false,
         hideQuestionText: true,
         hasTreeDiagram: true
+    },
+    "F1": {
+        name: "【單元 F1】三段論述——一般法相",
+        targetCount: 10,
+        isSequential: false,
+        showStatement: false
+    },
+    "F2": {
+        name: "【單元 F2】錯誤推論分析——一般法相",
+        targetCount: 20,
+        isSequential: false,
+        showStatement: false
     }
 };
 
@@ -61,7 +75,9 @@ export const questionBank = {
     "D1": unitD1,
     "D2": unitD2,
     "E1": unitE1,
-    "E2": unitE2
+    "E2": unitE2,
+    "F1": unitF1,
+    "F2": unitF2
 };
 
 export function getQuestionList(unitKey) {
