@@ -9,7 +9,7 @@ export const unitConfigs = {
         name: "【單元 A】模組、格式用語",
         targetCount: 10,
         isSequential: false,
-        showStatement: false // A~C 問答時隱藏論式
+        showStatement: false // A~C 問答時畫面上隱藏論式框
     },
     "B": {
         name: "【單元 B】模組內容",
@@ -27,7 +27,7 @@ export const unitConfigs = {
         name: "【單元 D1】三段論述推導",
         targetCount: 5,
         isSequential: true,
-        showStatement: true // D1~D2 問答時顯示論式以輔助推導
+        showStatement: true // D1~D2 問答時畫面上顯示論式框以利推導
     },
     "D2": {
         name: "【單元 D2】錯誤推論分析",

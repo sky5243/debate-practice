@@ -45,7 +45,6 @@ userAnswerInput.onkeydown = (e) => {
     if (e.key === 'Enter') handleSubmitAnswer(); 
 };
 
-// 自動讀取預設單元預覽
 updateUnitPreview();
 
 function updateUnitPreview() {
@@ -138,7 +137,6 @@ function askSubQuestion(readStatement) {
     speechHint.innerText = "";
     interactiveArea.style.display = 'none';
 
-    // 依據單元配置顯示或隱藏【論式】
     if (currentConfig.showStatement) {
         statementBox.innerText = `【論式】${currentQ.statement}`;
         statementBox.style.display = 'block';
@@ -169,7 +167,8 @@ function handleRepeat() {
 
     interactiveArea.style.display = 'none';
     const speechText = getSpeechQuestionText(subQIndex);
-    const textToSpeak = (currentConfig.showStatement ? currentQ.statement + "， " : "") + speechText;
+    // 點擊「🔊 論式再說一遍」時，無論哪一單元皆完整朗讀【論式】+【子題】
+    const textToSpeak = currentQ.statement + "， " + speechText;
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
         interactiveArea.style.display = 'block';
@@ -245,7 +244,7 @@ function showReviewPanel() {
     const allCorrect = userSessionRecords.every(r => r.correct);
 
     if (allCorrect) {
-        // 全對：紀錄成績（連續次數 +1）
+        // 三個子題全對，連續次數 +1
         const scoreResult = scoreManager.recordResult(true, currentConfig.isSequential);
         updateStatusDisplay();
 
@@ -271,7 +270,7 @@ function showReviewPanel() {
             }
         }
     } else {
-        // 有子題答錯：嘗試次數 +1，並檢查是否為第一次觸發歸零
+        // 有子題答錯：嘗試次數 +1，並檢查是否為第一次觸發第4次歸零
         const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
         updateStatusDisplay();
 
@@ -279,13 +278,13 @@ function showReviewPanel() {
         reviewPanel.style.display = 'block';
 
         if (incResult.justResetStreak) {
-            // 剛好第 4 次嘗試，首次歸零提示
+            // 第 4 次嘗試答錯（首次歸零提醒）
             reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請繼續挑戰本題...";
             speechService.speak("嘗試超過三次，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
                 setTimeout(retryCurrentQuestion, 1500);
             });
         } else {
-            // 一般答錯（第 1, 2, 3 次，或 5 次以上的常態答錯）
+            // 一般答錯（第 1, 2, 3 次，或 5 次以上的常態答錯提示）
             reviewTitle.innerText = "❌ 有答錯的子題，請繼續挑戰本題！";
             speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
                 setTimeout(retryCurrentQuestion, 1500);
