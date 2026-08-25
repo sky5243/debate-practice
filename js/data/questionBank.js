@@ -4,6 +4,7 @@ import { unitC } from './unitC.js';
 import { unitD1 } from './unitD1.js';
 import { unitD2 } from './unitD2.js';
 import { unitE1, unitE1Text } from './unitE1.js';
+import { unitE2, unitE2TreeData } from './unitE2.js';
 
 export const unitConfigs = {
     "A": {
@@ -42,6 +43,14 @@ export const unitConfigs = {
         targetTime: 20,
         targetRepeatCount: 300,
         text: unitE1Text
+    },
+    "E2": {
+        name: "【單元 E2】所知樹狀圖",
+        targetCount: 20,
+        isSequential: false,
+        showStatement: false,
+        hideQuestionText: true,
+        hasTreeDiagram: true
     }
 };
 
@@ -51,7 +60,8 @@ export const questionBank = {
     "C": unitC,
     "D1": unitD1,
     "D2": unitD2,
-    "E1": unitE1
+    "E1": unitE1,
+    "E2": unitE2
 };
 
 export function getQuestionList(unitKey) {
@@ -66,3 +76,5 @@ export function getUnitConfig(unitKey) {
         showStatement: false
     };
 }
+
+export { unitE2TreeData };

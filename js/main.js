@@ -25,6 +25,9 @@ let recordTimerInterval = null;
 let recordedDurationSec = 0;
 let readCount = parseInt(localStorage.getItem('unitE1_readCount') || '0', 10);
 
+// E2 法相表狀態
+let isTreeDiagramOpen = false;
+
 // DOM 元素引用
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
@@ -64,6 +67,12 @@ const readCountDisplay = document.getElementById('readCountDisplay');
 const addReadCountBtn = document.getElementById('addReadCountBtn');
 const recitationHint = document.getElementById('recitationHint');
 
+// E2 專用 DOM
+const treeDiagramArea = document.getElementById('treeDiagramArea');
+const treeToggleBtn = document.getElementById('treeToggleBtn');
+const treeDiagramCard = document.getElementById('treeDiagramCard');
+const closeTreeBtn = document.getElementById('closeTreeBtn');
+
 // 事件綁定
 startBtn.onclick = startPractice;
 stopBtn.onclick = stopPractice;
@@ -80,6 +89,10 @@ stopRecordBtn.onclick = stopRecording;
 passCheckBtn.onclick = handleE1PassCheck;
 failCheckBtn.onclick = handleE1FailCheck;
 addReadCountBtn.onclick = handleAddReadCount;
+
+// E2 事件綁定
+treeToggleBtn.onclick = toggleTreeDiagram;
+closeTreeBtn.onclick = closeTreeDiagram;
 
 userAnswerInput.onkeydown = (e) => { 
     if (e.key === 'Enter') handleSubmitAnswer(); 
@@ -125,6 +138,7 @@ function startPractice() {
         startE1Practice();
     } else {
         recitationPanel.style.display = 'none';
+        closeTreeDiagram();
         startNewQuestion();
     }
 }
@@ -156,8 +170,42 @@ function stopPractice() {
     interactiveArea.style.display = 'none';
     reviewPanel.style.display = 'none';
     recitationPanel.style.display = 'none';
+    closeTreeDiagram();
     displayText.innerText = "請選擇單元開始練習";
     updateUnitPreview();
+}
+
+/* ===================================================
+   E2 法相樹狀圖控制
+   =================================================== */
+function toggleTreeDiagram() {
+    if (isTreeDiagramOpen) {
+        closeTreeDiagram();
+    } else {
+        openTreeDiagram();
+    }
+}
+
+function openTreeDiagram() {
+    isTreeDiagramOpen = true;
+    treeDiagramCard.style.display = 'block';
+    userAnswerInput.disabled = true;
+    micBtn.disabled = true;
+    submitAnsBtn.disabled = true;
+    repeatBtn.disabled = true;
+    speechHint.innerText = "🔒 查看法相表期間答題已鎖定，請關閉法相表後繼續答題。";
+}
+
+function closeTreeDiagram() {
+    isTreeDiagramOpen = false;
+    treeDiagramCard.style.display = 'none';
+    userAnswerInput.disabled = false;
+    micBtn.disabled = false;
+    submitAnsBtn.disabled = false;
+    repeatBtn.disabled = false;
+    if (speechHint.innerText.includes("🔒")) {
+        speechHint.innerText = "";
+    }
 }
 
 /* ===================================================
@@ -208,7 +256,6 @@ function resetE1RecordState() {
 }
 
 function startRecording() {
-    // 按下錄音：立即清除上一輪的鼓勵提示，還原為初始狀態
     recitationHint.innerText = "【開始背誦請按「錄音按鈕」，完成時請按「停止鈕」】";
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -227,7 +274,6 @@ function startRecording() {
             mediaRecorder.start();
             recordStartTime = Date.now();
 
-            // 按下錄音：法相自宗文字立即消失！
             e1TextContainer.style.display = 'none';
             startRecordBtn.style.display = 'none';
             stopRecordBtn.style.display = 'inline-block';
@@ -259,7 +305,6 @@ function processRecordingResult() {
     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
     const audioUrl = URL.createObjectURL(audioBlob);
 
-    // 停止錄音：法相自宗文字重新顯示
     e1TextContainer.style.display = 'block';
     stopRecordBtn.style.display = 'none';
     recordTimer.style.display = 'none';
@@ -271,13 +316,11 @@ function processRecordingResult() {
 
 function handleE1PassCheck() {
     if (recordedDurationSec <= currentConfig.targetTime) {
-        // 背誦成功 (<= 20 秒，且確認正確)
         recitationHint.innerText = `🎉 恭喜您！成功在 ${recordedDurationSec} 秒內（≦ 20秒）正確背誦法相自宗！`;
         speechService.speak("恭喜您成功通過法相自宗背誦測試！", rateSelect.value, () => {
             stopPractice();
         });
     } else {
-        // 正確但超過 20 秒
         scoreManager.incrementAttempt(false);
         updateStatusDisplay();
         recitationHint.innerText = `⚠️ 背誦正確！但背誦時間為 ${recordedDurationSec} 秒（目標為 ≦ 20秒）。請繼續練習加快速度！`;
@@ -312,7 +355,7 @@ function handleAddReadCount() {
 }
 
 /* ===================================================
-   單元 A~D 問答邏輯
+   單元 A~D 及 E2 問答邏輯
    =================================================== */
 function startNewQuestion() {
     displayText.style.display = 'flex';
@@ -321,6 +364,12 @@ function startNewQuestion() {
     reviewContent.innerHTML = "";
     userAnswerInput.value = "";
     speechHint.innerText = "";
+
+    if (currentConfig.hasTreeDiagram) {
+        treeDiagramArea.style.display = 'block';
+    } else {
+        treeDiagramArea.style.display = 'none';
+    }
 
     if (currentConfig.isSequential) {
         currentQ = currentQuestionList[sequentialIndex];
@@ -361,15 +410,27 @@ function askSubQuestion(readStatement) {
         statementBox.style.display = 'none';
     }
 
-    displayText.innerText = `👉 請回答：【${currentQ.questions[subQIndex]}】`;
+    if (currentConfig.hideQuestionText) {
+        displayText.innerText = "🎧 請聽語音題目，回答「對」或「錯」";
+    } else {
+        displayText.innerText = `👉 請回答：【${currentQ.questions[subQIndex]}】`;
+    }
 
-    const speechText = getSpeechQuestionText(subQIndex);
-    const textToSpeak = (readStatement ? currentQ.statement + "， " : "") + speechText;
+    let textToSpeak = "";
+    if (currentUnit === "E2") {
+        // E2 提問直接朗讀題目內容即可，不另外加上「對還是錯？」
+        textToSpeak = currentQ.statement;
+    } else {
+        const speechText = getSpeechQuestionText(subQIndex);
+        textToSpeak = (readStatement ? currentQ.statement + "， " : "") + speechText;
+    }
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
         interactiveArea.style.display = 'block';
         userAnswerInput.value = "";
-        userAnswerInput.focus();
+        if (!isTreeDiagramOpen) {
+            userAnswerInput.focus();
+        }
     });
 }
 
@@ -383,13 +444,20 @@ function handleRepeat() {
     }
 
     interactiveArea.style.display = 'none';
-    const speechText = getSpeechQuestionText(subQIndex);
-    const textToSpeak = currentQ.statement + "， " + speechText;
+    let textToSpeak = "";
+    if (currentUnit === "E2") {
+        textToSpeak = currentQ.statement;
+    } else {
+        const speechText = getSpeechQuestionText(subQIndex);
+        textToSpeak = currentQ.statement + "， " + speechText;
+    }
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
         interactiveArea.style.display = 'block';
         userAnswerInput.value = "";
-        userAnswerInput.focus();
+        if (!isTreeDiagramOpen) {
+            userAnswerInput.focus();
+        }
     });
 }
 
@@ -428,7 +496,7 @@ function handleSubmitAnswer() {
     }
 
     userSessionRecords.push({
-        q: currentQ.questions[subQIndex],
+        q: currentUnit === "E2" ? currentQ.statement : currentQ.questions[subQIndex],
         ans: val,
         correct: isCorrect,
         std: std === "" ? "(留空/無法安立)" : std
@@ -497,7 +565,7 @@ function showReviewPanel() {
                 setTimeout(retryCurrentQuestion, 1500);
             });
         } else {
-            reviewTitle.innerText = "❌ 有答錯的子題，請繼續挑戰本題！";
+            reviewTitle.innerText = "❌ 答錯了，請繼續挑戰本題！";
             speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
                 setTimeout(retryCurrentQuestion, 1500);
             });

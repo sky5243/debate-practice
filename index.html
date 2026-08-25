@@ -66,11 +66,13 @@
         .input-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 580px; margin: 15px auto; }
         #userAnswerInput { flex: 1; font-size: 18px; padding: 12px 16px; border: 2px solid #3498db; border-radius: 10px; outline: none; }
         #userAnswerInput:focus { box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25); }
+        #userAnswerInput:disabled { background-color: #e2e8f0; border-color: #cbd5e1; cursor: not-allowed; }
         .icon-btn {
             display: inline-flex; align-items: center; justify-content: center;
             width: 48px; height: 48px; border-radius: 10px; border: none; cursor: pointer;
             transition: all 0.2s ease; padding: 0; flex-shrink: 0;
         }
+        .icon-btn:disabled { background-color: #cbd5e1 !important; color: #94a3b8 !important; cursor: not-allowed !important; }
         .mic-btn { background-color: #e2e8f0; color: #475569; }
         .mic-btn:hover { background-color: #cbd5e1; }
         .mic-btn.recording { background-color: #ef4444; color: white; animation: pulse 1.2s infinite; }
@@ -86,6 +88,7 @@
             font-weight: bold; cursor: pointer; border-radius: 8px; margin-bottom: 10px;
         }
         .repeat-btn:hover { background-color: #d68910; }
+        .repeat-btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .speech-hint { font-size: 14px; color: #64748b; min-height: 20px; margin-top: 4px; }
         .review-panel { 
             background: #fff8e1; border: 2px solid #ffb300; border-radius: 12px; 
@@ -135,6 +138,24 @@
         .btn-purple:hover, .btn-brown:hover { background-color: #432b20; }
         .btn-purple:disabled, .btn-brown:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .audio-playback { margin: 15px 0; width: 100%; max-width: 400px; }
+
+        /* */
+        .tree-toggle-btn {
+            background-color: #8b5cf6; color: white; border: none; padding: 10px 20px;
+            font-weight: bold; cursor: pointer; border-radius: 8px; margin-bottom: 12px;
+        }
+        .tree-toggle-btn:hover { background-color: #7c3aed; }
+        .tree-diagram-card {
+            display: none; background: #faf5ff; border: 2px solid #a855f7;
+            border-radius: 12px; padding: 15px; margin: 15px 0; text-align: left;
+            overflow-x: auto;
+        }
+        .tree-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+        .tree-table td, .tree-table th { border: 1px solid #c084fc; padding: 8px 10px; text-align: center; }
+        .tree-table th { background: #f3e8ff; color: #6b21a8; font-weight: bold; }
+        .tree-warning-banner {
+            color: #dc2626; font-weight: bold; font-size: 15px; text-align: center; margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -151,6 +172,7 @@
                     <option value="D1">【單元 D1】三段論述推導</option>
                     <option value="D2">【單元 D2】錯誤推論分析</option>
                     <option value="E1">【單元 E1】法相自宗背誦</option>
+                    <option value="E2">【單元 E2】所知樹狀圖</option>
                 </select>
             </div>
 
@@ -178,8 +200,45 @@
         <div class="statement-box" id="statementBox"></div>
         <div class="display-text" id="displayText">請選擇單元開始</div>
         
-        <!-- 單元 A~D 問答互動區 -->
+        <!-- 單元 A~D 及 E2 問答互動區 -->
         <div class="interactive-area" id="interactiveArea">
+            <!-- E2 法相表對照按鈕與容器 -->
+            <div id="treeDiagramArea" style="display: none;">
+                <button type="button" class="tree-toggle-btn" id="treeToggleBtn">👁️ 查看所知樹狀圖 (法相表)</button>
+                <div class="tree-diagram-card" id="treeDiagramCard">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-weight: bold; color: #6b21a8; font-size: 18px;">📖 所知樹狀圖（法相表）</span>
+                        <button type="button" id="closeTreeBtn" style="padding: 4px 10px; font-size: 14px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer;">❌ 關閉法相表</button>
+                    </div>
+                    <table class="tree-table">
+                        <tr>
+                            <th colspan="5">無我</th>
+                        </tr>
+                        <tr>
+                            <td colspan="4" style="background: #faf5ff; font-weight: bold;">有、所知、成實、法</td>
+                            <td style="background: #f3e8ff; font-weight: bold;">無</td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" style="font-weight: bold;">無常、實事、所作</td>
+                            <td style="font-weight: bold;">常法</td>
+                            <td rowspan="3">兔子角</td>
+                        </tr>
+                        <tr>
+                            <td style="font-weight: bold; background: #fdf4ff;">色法、物質</td>
+                            <td style="font-weight: bold; background: #fdf4ff;">心識、覺知、明了</td>
+                            <td style="font-weight: bold; background: #fdf4ff;">心不相應行法</td>
+                            <td rowspan="2">虛空</td>
+                        </tr>
+                        <tr>
+                            <td>瓶子、柱子、聲音、白色</td>
+                            <td>遍智、分別心</td>
+                            <td>補特伽羅</td>
+                        </tr>
+                    </table>
+                    <div class="tree-warning-banner">⚠️ 提示：查看法相表期間答題已鎖定，請關閉法相表後繼續答題。</div>
+                </div>
+            </div>
+
             <button class="repeat-btn" id="repeatBtn">🔊 論式再說一遍</button>
             
             <div class="input-wrapper">
