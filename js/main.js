@@ -467,8 +467,10 @@ function handleMicToggle() {
     } else {
         speechService.startRecognition(
             (cleanText) => {
-                userAnswerInput.value = cleanText;
-                speechHint.innerText = `辨識結果："${cleanText}"`;
+                // 僅在語音辨識回傳時進行同音/近音校正，不影響手打輸入
+                const normalizedText = AnswerEvaluator.normalizeSTTText(cleanText);
+                userAnswerInput.value = normalizedText;
+                speechHint.innerText = `辨識結果："${normalizedText}"`;
             },
             (errorMsg) => { speechHint.innerText = `⚠️ 語音辨識提醒：${errorMsg}`; },
             (isListening) => {
