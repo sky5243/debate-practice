@@ -8,15 +8,19 @@ export class AnswerEvaluator {
         if (!text) return "";
         let cleanText = text.trim();
 
-        // 1. 關鍵詞字典對照替換 (近音字 / 同音誤判字校正)
+        // 1. 核心句型正則表達式 (優先處理解決所有「所作」與「的話遍」相關組合)
+        cleanText = cleanText.replace(/[的得][話畫][遍便變片邊騙]/g, "的話遍");
+        cleanText = cleanText.replace(/[所鎖索][作做座]/g, "所作");
+
+        // 2. 關鍵詞字典對照替換 (僅保留無法用上面 Regex 涵蓋的特例)
         const sttCorrectionMap = {
             // 一、 核心法相與專有名詞
-            "鎖作": "所作", "所做": "所作", "鎖做": "所作", "鎖著": "所作", "索作": "所作",
+            "鎖著": "所作", // 特例：語音將「所作」誤判為「鎖著」
             "五常": "無常", "無場": "無常", "吾常": "無常", "舞常": "無常",
             "誠實": "成實", "承實": "成實", "乘實": "成實", "誠石": "成實",
             "心不相應刑法": "心不相應行法", "心不相應形法": "心不相應行法", "心不相應型法": "心不相應行法",
             "補特加羅": "補特伽羅", "普特伽羅": "補特伽羅", "不特伽羅": "補特伽羅", "補特迦羅": "補特伽羅",
-            "變智": "遍智", "便智": "遍智", "扁智": "遍智", "遍志": "遍智",
+            "變智": "遍智", "便智": "遍智", "扁智": "遍智", "遍志": "遍智", "騙子": "遍智", "變質": "遍智", "騙智": "遍智",
             "鎖知": "所知", "索知": "所知", "所支": "所知", "所隻": "所知",
             "決知": "覺知", "爵知": "覺知", "覺之": "覺知", "絕知": "覺知",
             "明瞭": "明了", "名了": "明了", "名瞭": "明了", "明老": "明了",
@@ -47,13 +51,9 @@ export class AnswerEvaluator {
             cleanText = cleanText.replaceAll(err, correct);
         }
 
-        // 2. 推論句型正則表達式通用替換 (「的畫/的話」 + 「變/便/遍」 組合)
-        cleanText = cleanText.replace(/的畫/g, "的話");
-        cleanText = cleanText.replace(/的話[變便]/g, "的話遍");
-
         return cleanText;
     }
-
+    
     static checkAnswer(userAns, stdAns) {
         let rawVal = (userAns || "").trim().toLowerCase();
         const rawStd = (stdAns || "").trim().toLowerCase();
