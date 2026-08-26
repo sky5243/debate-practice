@@ -98,6 +98,9 @@ userAnswerInput.onkeydown = (e) => {
     if (e.key === 'Enter') handleSubmitAnswer(); 
 };
 
+// 確保頁面一載入就顯示正確的歷史累計次數
+readCountDisplay.innerText = readCount;
+
 updateUnitPreview();
 
 function updateUnitPreview() {
@@ -221,7 +224,10 @@ function startE1Practice() {
     e1TextContainer.innerText = currentConfig.text;
     e1TextContainer.style.display = 'block';
 
+    // 💡 修正處：開啟 E1 時，重新從 localStorage 撈取最新的讀誦次數
+    readCount = parseInt(localStorage.getItem('unitE1_readCount') || '0', 10);
     readCountDisplay.innerText = readCount;
+
     switchE1SubMode("recite");
 }
 
