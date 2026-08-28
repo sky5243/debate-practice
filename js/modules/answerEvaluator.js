@@ -31,7 +31,7 @@ export class AnswerEvaluator {
             "長法": "常法", "場法": "常法", "唱法": "常法", "長髮": "常法",
             "吾我": "無我", "無窩": "無我", "五我": "無我",
             "兔子腳": "兔子角", "兔仔角": "兔子角", "兔角": "兔子角",
-            "所爭事": "所諍事", "所正事": "所諍事", "鎖諍事": "所諍事",
+            "所爭事": "所諍事", "所正事": "所諍事", "鎖諍事": "所諍事", "鎖證事": "所諍事", "所診事": "所諍事",
             "所現法": "所顯法", "所線法": "所顯法", "鎖顯法": "所顯法",
 
             // 二、 格式用語與關係用語
@@ -53,7 +53,7 @@ export class AnswerEvaluator {
 
         return cleanText;
     }
-    
+
     static checkAnswer(userAns, stdAns) {
         let rawVal = (userAns || "").trim().toLowerCase();
         const rawStd = (stdAns || "").trim().toLowerCase();
@@ -87,6 +87,16 @@ export class AnswerEvaluator {
         // 一般完全比對
         if (rawVal === rawStd) {
             return true;
+        }
+
+        // 單元 A 專用比對邏輯：僅當標準答案包含單元 A 核心模組詞彙時觸發
+        const isUnitAAnswer = (s) => s.includes("所諍事") || s.includes("所顯法") || s.includes("因");
+        if (isUnitAAnswer(rawStd)) {
+            // 消除連詞「與」、「和」、「及」、所有標點符號與空格，進行精準比對
+            const cleanUnitA = (str) => str.replace(/[與和及、，,\s]/g, "");
+            if (cleanUnitA(rawVal) === cleanUnitA(rawStd)) {
+                return true;
+            }
         }
 
         // 阿拉伯數字轉國字口語比對（例如 "兩個" -> "2"）

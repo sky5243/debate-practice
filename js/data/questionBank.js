@@ -1,5 +1,7 @@
 import { unitA } from './unitA.js';
-import { unitB } from './unitB.js';
+// 1. 匯入 B1 與 B2
+import { unitB1 } from './unitB1.js';
+import { unitB2 } from './unitB2.js';
 import { unitC } from './unitC.js';
 import { unitD1 } from './unitD1.js';
 import { unitD2 } from './unitD2.js';
@@ -15,8 +17,14 @@ export const unitConfigs = {
         isSequential: false,
         showStatement: false
     },
-    "B": {
-        name: "【單元 B】模組內容",
+    "B1": {
+        name: "【單元 B1】模組內容（複述）",
+        targetCount: 10,
+        isSequential: false,
+        showStatement: false
+    },
+    "B2": {
+        name: "【單元 B2】模組內容（分解）",
         targetCount: 10,
         isSequential: false,
         showStatement: false
@@ -56,13 +64,13 @@ export const unitConfigs = {
     },
     "F1": {
         name: "【單元 F1】三段論述——一般法相",
-        targetCount: 10,
+        targetCount: 5, // 💡 依 1.5.3 版規範調整：降低聽說測驗數量為 5 題
         isSequential: false,
         showStatement: false
     },
     "F2": {
         name: "【單元 F2】錯誤推論分析——一般法相",
-        targetCount: 20,
+        targetCount: 5, // 💡 依 1.5.3 版規範調整：降低聽說測驗數量為 5 題
         isSequential: false,
         showStatement: false
     }
@@ -70,7 +78,8 @@ export const unitConfigs = {
 
 export const questionBank = {
     "A": unitA,
-    "B": unitB,
+    "B1": unitB1,
+    "B2": unitB2,
     "C": unitC,
     "D1": unitD1,
     "D2": unitD2,

@@ -498,8 +498,10 @@ function handleSubmitAnswer() {
     
     let isCorrect = false;
     if (currentConfig.isSequential) {
+        // 順序題（如 D1/D2）保持嚴格比對，尊重精準輸入
         isCorrect = (val === std);
     } else {
+        // 隨機聽說題（如 A/B/C/E2/F1/F2）走 AnswerEvaluator 智慧容錯與校正
         isCorrect = AnswerEvaluator.checkAnswer(val, std);
     }
 
