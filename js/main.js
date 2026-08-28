@@ -158,23 +158,46 @@ function updateStatusDisplay() {
 
 function stopPractice() {
     isPracticing = false;
-    speechService.stopSpeaking();
-    speechService.stopRecognition();
+    
+    // 1. 強制停止語音服務
+    if (speechService) {
+        speechService.stopSpeaking();
+        speechService.stopRecognition();
+    }
+
+    // 2. 強制停止 E1 錄音與計時器
     if (mediaRecorder && mediaRecorder.state === "recording") {
         mediaRecorder.stop();
+        if (mediaRecorder.stream) {
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
     }
     clearInterval(recordTimerInterval);
 
+    // 3. 恢復控制面板與按鈕狀態
     startBtn.disabled = false;
     stopBtn.disabled = true;
     unitSelect.disabled = false;
 
+    // 4. 解鎖輸入框與選單
+    userAnswerInput.disabled = false;
+    micBtn.disabled = false;
+    submitAnsBtn.disabled = false;
+    repeatBtn.disabled = false;
+    micBtn.classList.remove('recording');
+
+    // 5. 清空與隱藏面板
     statementBox.style.display = 'none';
     interactiveArea.style.display = 'none';
     reviewPanel.style.display = 'none';
     recitationPanel.style.display = 'none';
     closeTreeDiagram();
+    
+    displayText.style.display = 'flex';
     displayText.innerText = "請選擇單元開始練習";
+    speechHint.innerText = "";
+    userAnswerInput.value = "";
+
     updateUnitPreview();
 }
 
@@ -224,7 +247,6 @@ function startE1Practice() {
     e1TextContainer.innerText = currentConfig.text;
     e1TextContainer.style.display = 'block';
 
-    // 💡 修正處：開啟 E1 時，重新從 localStorage 撈取最新的讀誦次數
     readCount = parseInt(localStorage.getItem('unitE1_readCount') || '0', 10);
     readCountDisplay.innerText = readCount;
 
@@ -301,7 +323,9 @@ function startRecording() {
 function stopRecording() {
     if (mediaRecorder && mediaRecorder.state === "recording") {
         mediaRecorder.stop();
-        mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        if (mediaRecorder.stream) {
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
     }
     clearInterval(recordTimerInterval);
 }
@@ -424,7 +448,6 @@ function askSubQuestion(readStatement) {
 
     let textToSpeak = "";
     if (currentUnit === "E2") {
-        // E2 提問直接朗讀題目內容即可，不另外加上「對還是錯？」
         textToSpeak = currentQ.statement;
     } else {
         const speechText = getSpeechQuestionText(subQIndex);
@@ -473,7 +496,6 @@ function handleMicToggle() {
     } else {
         speechService.startRecognition(
             (cleanText) => {
-                // 僅在語音辨識回傳時進行同音/近音校正，不影響手打輸入
                 const normalizedText = AnswerEvaluator.normalizeSTTText(cleanText);
                 userAnswerInput.value = normalizedText;
                 speechHint.innerText = `辨識結果："${normalizedText}"`;
@@ -498,10 +520,8 @@ function handleSubmitAnswer() {
     
     let isCorrect = false;
     if (currentConfig.isSequential) {
-        // 順序題（如 D1/D2）保持嚴格比對，尊重精準輸入
         isCorrect = (val === std);
     } else {
-        // 隨機聽說題（如 A/B/C/E2/F1/F2）走 AnswerEvaluator 智慧容錯與校正
         isCorrect = AnswerEvaluator.checkAnswer(val, std);
     }
 
