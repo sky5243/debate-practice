@@ -18,13 +18,13 @@ export const unitConfigs = {
         showStatement: false
     },
     "B1": {
-        name: "【單元 B1】模組內容（複述）",
+        name: "【單元 B1】模組內容（去格式用語）",
         targetCount: 10,
         isSequential: false,
         showStatement: false
     },
     "B2": {
-        name: "【單元 B2】模組內容（分解）",
+        name: "【單元 B2】模組內容（模組安立）",
         targetCount: 10,
         isSequential: false,
         showStatement: false
