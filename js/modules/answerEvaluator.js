@@ -89,6 +89,12 @@ export class AnswerEvaluator {
             return true;
         }
 
+        // 💡 新增：忽略全半形空格與常見標點符號後進行比對（解決單元 B1 語音無法輸入空格的問題）
+        const stripSymbols = (str) => str.replace(/[\s\t\n,，、。！？；：]/g, "");
+        if (stripSymbols(rawVal) === stripSymbols(rawStd)) {
+            return true;
+        }
+
         // 單元 A 專用比對邏輯：僅當標準答案包含單元 A 核心模組詞彙時觸發
         const isUnitAAnswer = (s) => s.includes("所諍事") || s.includes("所顯法") || s.includes("因");
         if (isUnitAAnswer(rawStd)) {
