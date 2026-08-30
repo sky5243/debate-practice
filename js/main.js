@@ -156,12 +156,16 @@ function updateStatusDisplay() {
     attemptDisplay.innerText = `本題嘗試: ${scoreManager.attempts}`;
 }
 
-function stopPractice() {
+// 預設 keepSpeaking 為 false
+function stopPractice(keepSpeaking = false) {
     isPracticing = false;
     
-    // 1. 強制停止語音服務
-    if (speechService) {
+    // 1. 強制停止語音服務（除非特別指定 keepSpeaking 為 true）
+    if (speechService && !keepSpeaking) {
         speechService.stopSpeaking();
+        speechService.stopRecognition();
+    } else if (speechService) {
+        // 即使保留朗讀，還是要停止語音辨識
         speechService.stopRecognition();
     }
 
@@ -345,28 +349,66 @@ function processRecordingResult() {
 }
 
 function handleE1PassCheck() {
+    const currentRate = parseFloat(rateSelect.value) || 1.0;
+    const STARTUP_BUFFER = 800; // 💡 800ms 固定啟動延遲與聲音切換緩衝
+
     if (recordedDurationSec <= currentConfig.targetTime) {
         recitationHint.innerText = `🎉 恭喜您！成功在 ${recordedDurationSec} 秒內（≦ 20秒）正確背誦法相自宗！`;
-        speechService.speak("恭喜您成功通過法相自宗背誦測試！", rateSelect.value, () => {
-            stopPractice();
-        });
+        
+        // 17字+標點，1.0倍速基準設為 4200ms
+        const dynamicDelay = Math.round((4200 / currentRate) + STARTUP_BUFFER);
+
+        let hasExecuted = false;
+        const nextStep = () => {
+            if (hasExecuted) return;
+            hasExecuted = true;
+            // 💡 傳入 true，表示結束練習時不要強制切斷正在播放的語音
+            stopPractice(true);
+        };
+
+        speechService.speak("恭喜您成功通過法相自宗背誦測試！", currentRate, nextStep);
+        setTimeout(nextStep, dynamicDelay);
+
     } else {
         scoreManager.incrementAttempt(false);
         updateStatusDisplay();
         recitationHint.innerText = `⚠️ 背誦正確！但背誦時間為 ${recordedDurationSec} 秒（目標為 ≦ 20秒）。請繼續練習加快速度！`;
-        speechService.speak("背誦正確，但時間超過20秒，請再試一次", rateSelect.value, () => {
+        
+        // 20字+標點，1.0倍速基準設為 4800ms
+        const dynamicDelay = Math.round((4800 / currentRate) + STARTUP_BUFFER);
+
+        let hasExecuted = false;
+        const nextStep = () => {
+            if (hasExecuted) return;
+            hasExecuted = true;
             resetE1RecordState();
-        });
+        };
+
+        speechService.speak("背誦正確，但時間超過20秒，請再試一次", currentRate, nextStep);
+        setTimeout(nextStep, dynamicDelay);
     }
 }
 
 function handleE1FailCheck() {
+    const currentRate = parseFloat(rateSelect.value) || 1.0;
+    const STARTUP_BUFFER = 800;
+
     scoreManager.incrementAttempt(false);
     updateStatusDisplay();
     recitationHint.innerText = "💪 沒關係！請重新錄音挑戰一次，相信您能做得更好！";
-    speechService.speak("沒關係，請再接再勵，重新嘗試", rateSelect.value, () => {
+    
+    // 14字+標點，1.0倍速基準設為 3500ms
+    const dynamicDelay = Math.round((3500 / currentRate) + STARTUP_BUFFER);
+
+    let hasExecuted = false;
+    const nextStep = () => {
+        if (hasExecuted) return;
+        hasExecuted = true;
         resetE1RecordState();
-    });
+    };
+
+    speechService.speak("沒關係，請再接再勵，重新嘗試", currentRate, nextStep);
+    setTimeout(nextStep, dynamicDelay);
 }
 
 function handleAddReadCount() {
