@@ -1,5 +1,4 @@
 import { unitA } from './unitA.js';
-// 1. 匯入 B1 與 B2
 import { unitB1 } from './unitB1.js';
 import { unitB2 } from './unitB2.js';
 import { unitC } from './unitC.js';
@@ -9,6 +8,9 @@ import { unitE1, unitE1Text } from './unitE1.js';
 import { unitE2, unitE2TreeData } from './unitE2.js';
 import { unitF1 } from './unitF1.js';
 import { unitF2 } from './unitF2.js';
+// 💡 1. 匯入單元 G1,G2
+import { unitG1 } from './unitG1.js';
+import { unitG2 } from './unitG2.js'; // 新增這一行
 
 export const unitConfigs = {
     "A": {
@@ -64,15 +66,28 @@ export const unitConfigs = {
     },
     "F1": {
         name: "【單元 F1】三段論述——一般法相",
-        targetCount: 5, // 💡 依 1.5.3 版規範調整：降低聽說測驗數量為 5 題
+        targetCount: 5,
         isSequential: false,
         showStatement: false
     },
     "F2": {
         name: "【單元 F2】錯誤推論分析——一般法相",
-        targetCount: 5, // 💡 依 1.5.3 版規範調整：降低聽說測驗數量為 5 題
+        targetCount: 5,
         isSequential: false,
         showStatement: false
+    },
+    // 💡 2. 新增單元 G1 設定 (目標 10 題，隨機抽題，且依規則不在畫面上顯示論式)
+    "G1": {
+        name: "【單元 G1】四種回答——複述",
+        targetCount: 10,
+        isSequential: false,
+        showStatement: false 
+    },
+    "G2": { // 新增這段 G2 的設定
+        name: "【單元 G2】四種回答——立宗",
+        targetCount: 10,
+        isSequential: false,
+        showStatement: false 
     }
 };
 
@@ -86,7 +101,10 @@ export const questionBank = {
     "E1": unitE1,
     "E2": unitE2,
     "F1": unitF1,
-    "F2": unitF2
+    "F2": unitF2,
+    // 💡 3. 將 G1 加入題庫對應表
+    "G1": unitG1,
+    "G2": unitG2 // 新增這一行
 };
 
 export function getQuestionList(unitKey) {
