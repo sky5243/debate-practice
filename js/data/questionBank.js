@@ -12,6 +12,7 @@ import { unitF2 } from './unitF2.js';
 import { unitG1 } from './unitG1.js';
 import { unitG2 } from './unitG2.js'; // 新增這一行
 import { unitH1 } from './unitH1.js';
+import { unitH2 } from './unitH2.js';
 
 export const unitConfigs = {
     "A": {
@@ -95,6 +96,12 @@ export const unitConfigs = {
     targetCount: 10,
     isSequential: false,
     showStatement: false 
+    },
+    "H2": { 
+    name: "【單元 H2】綜合回答", 
+    targetCount: 10, 
+    isSequential: false, 
+    showStatement: false 
     }
 };
 
@@ -112,7 +119,8 @@ export const questionBank = {
     // 💡 3. 將 G1 加入題庫對應表
     "G1": unitG1,
     "G2": unitG2, // 新增這一行
-    "H1": unitH1
+    "H1": unitH1,
+    "H2": unitH2
 };
 
 export function getQuestionList(unitKey) {

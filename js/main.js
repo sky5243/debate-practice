@@ -13,6 +13,7 @@ let currentQuestionList = [];
 let sequentialIndex = 0;
 let currentQ = null;
 let subQIndex = 0;
+let selectedPathIndex = -1; // 💡 新增這行：記錄鎖定的路線索引
 let lastQuestionIndex = -1;
 let userSessionRecords = [];
 
@@ -455,6 +456,7 @@ function startNewQuestion() {
     }
 
     subQIndex = 0;
+    selectedPathIndex = -1; // 💡 新增這行：重置路線
     userSessionRecords = [];
 
     scoreManager.startNewQuestion();
@@ -558,14 +560,46 @@ function handleMicToggle() {
 function handleSubmitAnswer() {
     speechService.stopRecognition();
     const val = userAnswerInput.value.trim();
-    const std = currentQ.answers[subQIndex];
-    
+    let std = "";
     let isCorrect = false;
-    if (currentConfig.isSequential) {
-        isCorrect = (val === std);
+
+    // --- 新增：處理 H2 雙重路徑與舊單元單一路徑的動態判斷 ---
+    if (currentQ.answers && Array.isArray(currentQ.answers[0])) {
+        // 【二維陣列】代表是 H2 的多路徑模式
+        if (subQIndex === 0) {
+            // 第 1 題：偵測使用者選了哪條路徑
+            let matched = false;
+            for (let i = 0; i < currentQ.answers.length; i++) {
+                const pathStd = currentQ.answers[i][0];
+                const checkPass = currentConfig.isSequential ? (val === pathStd) : AnswerEvaluator.checkAnswer(val, pathStd);
+                if (checkPass) {
+                    isCorrect = true;
+                    selectedPathIndex = i; // 鎖定這條路徑
+                    std = pathStd;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                // 如果第一題就亂回答，強制預設為第一條路徑，讓後續有標準答案可顯示
+                selectedPathIndex = 0;
+                std = currentQ.answers.map(p => p[0]).join(" 或 ");
+            }
+        } else {
+            // 第 2, 3 題：強制讀取已被鎖定的路徑
+            std = currentQ.answers[selectedPathIndex][subQIndex];
+            isCorrect = currentConfig.isSequential ? (val === std) : AnswerEvaluator.checkAnswer(val, std);
+        }
     } else {
-        isCorrect = AnswerEvaluator.checkAnswer(val, std);
+        // 【一維陣列】舊單元 (A~H1) 的原本邏輯，完全無縫接軌
+        std = currentQ.answers[subQIndex];
+        if (currentConfig.isSequential) {
+            isCorrect = (val === std);
+        } else {
+            isCorrect = AnswerEvaluator.checkAnswer(val, std);
+        }
     }
+    // --- 判斷邏輯結束 ---
 
     userSessionRecords.push({
         q: currentUnit === "E2" ? currentQ.statement : currentQ.questions[subQIndex],
@@ -648,6 +682,7 @@ function showReviewPanel() {
 function retryCurrentQuestion() {
     reviewPanel.style.display = 'none';
     subQIndex = 0;
+    selectedPathIndex = -1; // 💡 新增這行：重置路線
     userSessionRecords = [];
     updateStatusDisplay();
     askSubQuestion(true);
