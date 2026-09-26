@@ -80,73 +80,71 @@ export class AnswerEvaluator {
 
     static checkAnswer(userAns, stdAns) {
         let rawVal = (userAns || "").trim().toLowerCase();
-        const rawStd = (stdAns || "").trim().toLowerCase();
+        let rawStd = (stdAns || "").trim().toLowerCase(); // 💡 注意：改用 let
 
-        // 💡 關鍵修改：將使用者的輸入轉換為繁體字，再進行後續比對
+        // 💡 關鍵修復：讓使用者輸入與標準答案「同步」進行繁體轉換
+        // 這樣不論 OpenCC 把「明了」轉成「明瞭」還是保留「明了」，兩邊都會完全一致！
         rawVal = this.convertToTraditional(rawVal);
+        rawStd = this.convertToTraditional(rawStd);
 
-        // 當標準答案為空字串（代表「留空 / 無法安立」）
+        // 💡 終極字串淨化函式
+        const stripSymbols = (str) => {
+            if (!str) return "";
+            return str
+                .toString()
+                .replace(/[\s\t\n\r\u00A0\u200B\uFEFF,，、。！？；：;:]/g, "")
+                .trim();
+        };
+
+        const cleanVal = stripSymbols(rawVal);
+        const cleanStd = stripSymbols(rawStd);
+
+        // 判斷是否比對成功
+        let isMatch = false;
+
+        // 1. 空字串判斷
         if (rawStd === "") {
-            const cleanVal = rawVal.replace(/^應該/, '').trim();
-            const validEmptyAnswers = [
-                "", 
-                "無法安立", 
-                "不可安立", 
-                "應該無法安立", 
-                "應該沒有", 
-                "沒有安立"
-            ];
-            return validEmptyAnswers.includes(rawVal) || validEmptyAnswers.includes(cleanVal);
-        }
-
-        // 當標準答案為「對」或「錯」（單元 E2 真假比對）
-        if (rawStd === "對" || rawStd === "錯") {
+            const checkVal = rawVal.replace(/^應該/, '').trim();
+            const validEmptyAnswers = ["", "無法安立", "不可安立", "應該無法安立", "應該沒有", "沒有安立"];
+            isMatch = validEmptyAnswers.includes(rawVal) || validEmptyAnswers.includes(checkVal);
+        } 
+        // 2. 對/錯判斷
+        else if (rawStd === "對" || rawStd === "錯") {
             const trueSynonyms = ["對", "o", "圈", "正確", "是", "對的", "正確的"];
             const falseSynonyms = ["錯", "x", "叉", "叉叉", "錯誤", "不對", "錯的", "錯誤的"];
-
-            if (rawStd === "對") {
-                return trueSynonyms.includes(rawVal);
-            } else if (rawStd === "錯") {
-                return falseSynonyms.includes(rawVal);
-            }
-        }
-
-        // 一般完全比對
-        if (rawVal === rawStd) {
-            return true;
-        }
-
-        // 忽略全半形空格與常見標點符號後進行比對
-        const stripSymbols = (str) => str.replace(/[\s\t\n,，、。！？；：]/g, "");
-        if (stripSymbols(rawVal) === stripSymbols(rawStd)) {
-            return true;
-        }
-
-        // 單元 A 專用比對邏輯：僅當標準答案包含單元 A 核心模組詞彙時觸發
-        const isUnitAAnswer = (s) => s.includes("所諍事") || s.includes("所顯法") || s.includes("因");
-        if (isUnitAAnswer(rawStd)) {
-            // 消除連詞「與」、「和」、「及」、所有標點符號與空格，進行精準比對
+            isMatch = rawStd === "對" ? trueSynonyms.includes(rawVal) : falseSynonyms.includes(rawVal);
+        } 
+        // 3. 一般完全比對 / 淨化後比對
+        else if (rawVal === rawStd || cleanVal === cleanStd) {
+            isMatch = true;
+        } 
+        // 4. 單元 A 比對
+        else if (rawStd.includes("所諍事") || rawStd.includes("所顯法") || rawStd.includes("因")) {
             const cleanUnitA = (str) => str.replace(/[與和及、，,\s]/g, "");
-            if (cleanUnitA(rawVal) === cleanUnitA(rawStd)) {
-                return true;
-            }
-        }
-
-        // 阿拉伯數字轉國字口語比對（例如 "兩個" -> "2"）
-        if (/^\d+$/.test(rawStd)) {
-            let normalized = rawVal
-                .replace(/一/g, '1')
-                .replace(/二|兩|雙/g, '2')
-                .replace(/三/g, '3')
-                .replace(/四/g, '4')
-                .replace(/五/g, '5');
-
+            if (cleanUnitA(rawVal) === cleanUnitA(rawStd)) isMatch = true;
+        } 
+        // 5. 數字比對
+        else if (/^\d+$/.test(rawStd)) {
+            let normalized = rawVal.replace(/一/g, '1').replace(/二|兩|雙/g, '2').replace(/三/g, '3').replace(/四/g, '4').replace(/五/g, '5');
             const foundDigits = normalized.match(/\d+/g);
-            if (foundDigits && foundDigits.includes(rawStd)) {
-                return true;
-            }
+            if (foundDigits && foundDigits.includes(rawStd)) isMatch = true;
         }
 
-        return false;
+        // 🔍 【除錯核心】如果比對失敗，列印詳細的字元解碼資料至 Console
+        if (!isMatch) {
+            console.group("❌ [AnswerEvaluator 除錯分析]");
+            console.log("【使用者輸入原始值】:", JSON.stringify(userAns));
+            console.log("【標準答案原始值】:", JSON.stringify(stdAns));
+            console.log("【淨化後使用者輸入】:", JSON.stringify(cleanVal));
+            console.log("【淨化後標準答案】:", JSON.stringify(cleanStd));
+            
+            // 印出字元層級的 Unicode 編碼（Hex）
+            const toHex = (str) => Array.from(str).map(c => `U+${c.charCodeAt(0).toString(16).padStart(4, '0').toUpperCase()}`).join(' ');
+            console.log("【使用者輸入 CharCodes】:", toHex(cleanVal));
+            console.log("【標準答案 CharCodes】:", toHex(cleanStd));
+            console.groupEnd();
+        }
+
+        return isMatch;
     }
 }
