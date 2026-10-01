@@ -13,6 +13,9 @@ import { unitG1 } from './unitG1.js';
 import { unitG2 } from './unitG2.js'; // 新增這一行
 import { unitH1 } from './unitH1.js';
 import { unitH2 } from './unitH2.js';
+// 💡 1. 匯入單元 I1, I2
+import { unitI1 } from './unitI1.js';
+import { unitI2 } from './unitI2.js';
 
 export const unitConfigs = {
     "A": {
@@ -102,6 +105,19 @@ export const unitConfigs = {
     targetCount: 10, 
     isSequential: false, 
     showStatement: false 
+    },
+    // 💡 2. 新增單元 I1, I2 設定
+    "I1": { 
+        name: "【單元 I1】綜合回答——無效有法", 
+        targetCount: 10, 
+        isSequential: false, 
+        showStatement: false 
+    },
+    "I2": { 
+        name: "【單元 I2】綜合回答——無效有法（含因/周遍）", 
+        targetCount: 10, 
+        isSequential: false, 
+        showStatement: false 
     }
 };
 
@@ -120,7 +136,10 @@ export const questionBank = {
     "G1": unitG1,
     "G2": unitG2, // 新增這一行
     "H1": unitH1,
-    "H2": unitH2
+    "H2": unitH2,
+    // 💡 3. 將 I1, I2 加入題庫對應表
+    "I1": unitI1,
+    "I2": unitI2
 };
 
 export function getQuestionList(unitKey) {
