@@ -1,6 +1,7 @@
 /**
  * 語音服務模組：完全封裝瀏覽器的 SpeechSynthesis 與 SpeechRecognition
  * 已針對 Android Chrome / iOS Safari 進行語音通道與聲道鎖定優化
+ * 包含 TTS 發音校正功能（針對破音字與佛學專有名詞）
  */
 export class SpeechService {
     constructor() {
@@ -29,7 +30,30 @@ export class SpeechService {
         const voices = this.synth.getVoices();
         // 優先挑選 台灣中文 (zh-TW)，若無則挑選廣義中文 (zh)
         this.targetVoice = voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') || 
-                          voices.find(v => v.lang.startsWith('zh')) || null;
+                           voices.find(v => v.lang.startsWith('zh')) || null;
+    }
+
+    /**
+     * 💡 TTS 朗讀發音校正：將容易念錯的詞彙替換為精準發音的同音字
+     * @param {string} text 原始題目文字
+     * @returns {string} 修正發音後的朗讀文字
+     */
+    correctPhoneticsForTTS(text) {
+        if (!text) return "";
+        let ttsText = text;
+
+        const phoneticMap = {
+            "明了": "明瞭",       // 避免「了」被發音為 le，強制發音為 liǎo
+            "補特伽羅": "補特茄羅", // 避免「伽」被發音為 jiā，修正為 qié 音（茄）
+            "伽羅": "茄羅",
+            "般若": "缽惹"        // 經典佛學專有名詞範例 (bō rě)
+        };
+
+        for (const [raw, phonetic] of Object.entries(phoneticMap)) {
+            ttsText = ttsText.replaceAll(raw, phonetic);
+        }
+
+        return ttsText;
     }
 
     speak(text, rate = 1.25, onEndCallback) {
@@ -50,7 +74,10 @@ export class SpeechService {
             this._initVoices();
         }
 
-        const utter = new SpeechSynthesisUtterance(text);
+        // 💡 進行朗讀發音校正，產生專門給語音引擎播報的文字
+        const correctedText = this.correctPhoneticsForTTS(text);
+
+        const utter = new SpeechSynthesisUtterance(correctedText);
         utter.lang = 'zh-TW';
         utter.rate = parseFloat(rate) || 1.25;
 
