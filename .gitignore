@@ -1,1 +1,4 @@
 ﻿desktop.ini
+*.log
+gemini-stt-proxy/.env
+gemini-stt-proxy/node_modules/

@@ -1,0 +1,714 @@
+import { SpeechService } from './modules/speechServiceLive.js'; // 💡 改為引用 Live 語音模組
+import { AnswerEvaluator } from './modules/answerEvaluator.js';
+import { ScoreManager } from './modules/scoreManager.js';
+import { getQuestionList, getUnitConfig } from './data/questionBank.js';
+
+const speechService = new SpeechService();
+const scoreManager = new ScoreManager();
+
+let isPracticing = false;
+let currentUnit = "A";
+let currentConfig = null;
+let currentQuestionList = [];
+let sequentialIndex = 0;
+let currentQ = null;
+let subQIndex = 0;
+let selectedPathIndex = -1; // 💡 記錄鎖定的路線索引
+let lastQuestionIndex = -1;
+let userSessionRecords = [];
+
+// E1 背誦與讀誦相關變數
+let e1SubMode = "recite"; // "recite" 背誦 | "read" 讀誦
+let mediaRecorder = null;
+let audioChunks = [];
+let recordStartTime = 0;
+let recordTimerInterval = null;
+let recordedDurationSec = 0;
+let readCount = parseInt(localStorage.getItem('unitE1_readCount') || '0', 10);
+
+// E2 法相表狀態
+let isTreeDiagramOpen = false;
+
+// DOM 元素引用
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const unitSelect = document.getElementById('unitSelect');
+const rateSelect = document.getElementById('rateSelect');
+const streakDisplay = document.getElementById('streakDisplay');
+const attemptDisplay = document.getElementById('attemptDisplay');
+const statementBox = document.getElementById('statementBox');
+const displayText = document.getElementById('displayText');
+const interactiveArea = document.getElementById('interactiveArea');
+const repeatBtn = document.getElementById('repeatBtn');
+const userAnswerInput = document.getElementById('userAnswerInput');
+const micBtn = document.getElementById('micBtn');
+const submitAnsBtn = document.getElementById('submitAnsBtn');
+const speechHint = document.getElementById('speechHint');
+const reviewPanel = document.getElementById('reviewPanel');
+const reviewTitle = document.getElementById('reviewTitle');
+const reviewContent = document.getElementById('reviewContent');
+
+// E1 專用 DOM
+const recitationPanel = document.getElementById('recitationPanel');
+const modeReciteTab = document.getElementById('modeReciteTab');
+const modeReadTab = document.getElementById('modeReadTab');
+const e1TextContainer = document.getElementById('e1TextContainer');
+const recitationSubView = document.getElementById('recitationSubView');
+const readingSubView = document.getElementById('readingSubView');
+const startRecordBtn = document.getElementById('startRecordBtn');
+const stopRecordBtn = document.getElementById('stopRecordBtn');
+const recordTimer = document.getElementById('recordTimer');
+const timerText = document.getElementById('timerText');
+const verifySection = document.getElementById('verifySection');
+const audioPlayback = document.getElementById('audioPlayback');
+const recordResultTitle = document.getElementById('recordResultTitle');
+const passCheckBtn = document.getElementById('passCheckBtn');
+const failCheckBtn = document.getElementById('failCheckBtn');
+const readCountDisplay = document.getElementById('readCountDisplay');
+const addReadCountBtn = document.getElementById('addReadCountBtn');
+const recitationHint = document.getElementById('recitationHint');
+
+// E2 專用 DOM
+const treeDiagramArea = document.getElementById('treeDiagramArea');
+const treeToggleBtn = document.getElementById('treeToggleBtn');
+const treeDiagramCard = document.getElementById('treeDiagramCard');
+const closeTreeBtn = document.getElementById('closeTreeBtn');
+
+// 事件綁定
+startBtn.onclick = startPractice;
+stopBtn.onclick = stopPractice;
+repeatBtn.onclick = handleRepeat;
+submitAnsBtn.onclick = handleSubmitAnswer;
+micBtn.onclick = handleMicToggle;
+unitSelect.onchange = updateUnitPreview;
+
+// E1 事件綁定
+modeReciteTab.onclick = () => switchE1SubMode("recite");
+modeReadTab.onclick = () => switchE1SubMode("read");
+startRecordBtn.onclick = startRecording;
+stopRecordBtn.onclick = stopRecording;
+passCheckBtn.onclick = handleE1PassCheck;
+failCheckBtn.onclick = handleE1FailCheck;
+addReadCountBtn.onclick = handleAddReadCount;
+
+// E2 事件綁定
+treeToggleBtn.onclick = toggleTreeDiagram;
+closeTreeBtn.onclick = closeTreeDiagram;
+
+userAnswerInput.onkeydown = (e) => { 
+    if (e.key === 'Enter') handleSubmitAnswer(); 
+};
+
+// 確保頁面一載入就顯示正確的歷史累計次數
+readCountDisplay.innerText = readCount;
+
+updateUnitPreview();
+
+function updateUnitPreview() {
+    if (isPracticing) return;
+    const selectedUnit = unitSelect.value;
+    const config = getUnitConfig(selectedUnit);
+
+    if (config.mode === "recitation") {
+        streakDisplay.innerText = `目標: ≦ 20秒 / 300遍`;
+        attemptDisplay.innerText = `本題嘗試: ${scoreManager.attempts}`;
+    } else {
+        const qList = getQuestionList(selectedUnit);
+        const targetTotal = config.targetCount || (config.isSequential ? qList.length : 10);
+        const label = config.isSequential ? "進度" : "連續通過";
+        streakDisplay.innerText = `${label}: 0 / ${targetTotal}`;
+        attemptDisplay.innerText = `本題嘗試: ${scoreManager.attempts}`;
+    }
+}
+
+function startPractice() {
+    isPracticing = true;
+    currentUnit = unitSelect.value;
+    currentConfig = getUnitConfig(currentUnit);
+    currentQuestionList = getQuestionList(currentUnit);
+    
+    sequentialIndex = 0;
+    const targetTotal = currentConfig.targetCount || (currentConfig.isSequential ? currentQuestionList.length : 10);
+    
+    scoreManager.resetSession(targetTotal);
+
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    unitSelect.disabled = true;
+
+    updateStatusDisplay();
+
+    if (currentConfig.mode === "recitation") {
+        startE1Practice();
+    } else {
+        recitationPanel.style.display = 'none';
+        closeTreeDiagram();
+        startNewQuestion();
+    }
+}
+
+function updateStatusDisplay() {
+    if (currentConfig && currentConfig.mode === "recitation") {
+        streakDisplay.innerText = `目標: ≦ 20秒 / 300遍`;
+    } else {
+        const label = currentConfig && currentConfig.isSequential ? "進度" : "連續通過";
+        streakDisplay.innerText = `${label}: ${scoreManager.streak} / ${scoreManager.streakThreshold}`;
+    }
+    attemptDisplay.innerText = `本題嘗試: ${scoreManager.attempts}`;
+}
+
+// 預設 keepSpeaking 為 false
+function stopPractice(keepSpeaking = false) {
+    isPracticing = false;
+    
+    // 1. 強制停止語音服務（除非特別指定 keepSpeaking 為 true）
+    if (speechService && !keepSpeaking) {
+        speechService.stopSpeaking();
+        speechService.stopRecognition();
+    } else if (speechService) {
+        // 即使保留朗讀，還是要停止語音辨識
+        speechService.stopRecognition();
+    }
+
+    // 2. 強制停止 E1 錄音與計時器
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        if (mediaRecorder.stream) {
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+    }
+    clearInterval(recordTimerInterval);
+
+    // 3. 恢復控制面板與按鈕狀態
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    unitSelect.disabled = false;
+
+    // 4. 解鎖輸入框與選單
+    userAnswerInput.disabled = false;
+    micBtn.disabled = false;
+    submitAnsBtn.disabled = false;
+    repeatBtn.disabled = false;
+    micBtn.classList.remove('recording');
+
+    // 5. 清空與隱藏面板
+    statementBox.style.display = 'none';
+    interactiveArea.style.display = 'none';
+    reviewPanel.style.display = 'none';
+    recitationPanel.style.display = 'none';
+    closeTreeDiagram();
+    
+    displayText.style.display = 'flex';
+    displayText.innerText = "請選擇單元開始練習";
+    speechHint.innerText = "";
+    userAnswerInput.value = "";
+
+    updateUnitPreview();
+}
+
+/* ===================================================
+   E2 法相樹狀圖控制
+   =================================================== */
+function toggleTreeDiagram() {
+    if (isTreeDiagramOpen) {
+        closeTreeDiagram();
+    } else {
+        openTreeDiagram();
+    }
+}
+
+function openTreeDiagram() {
+    isTreeDiagramOpen = true;
+    treeDiagramCard.style.display = 'block';
+    userAnswerInput.disabled = true;
+    micBtn.disabled = true;
+    submitAnsBtn.disabled = true;
+    repeatBtn.disabled = true;
+    speechHint.innerText = "🔒 查看法相表期間答題已鎖定，請關閉法相表後繼續答題。";
+}
+
+function closeTreeDiagram() {
+    isTreeDiagramOpen = false;
+    treeDiagramCard.style.display = 'none';
+    userAnswerInput.disabled = false;
+    micBtn.disabled = false;
+    submitAnsBtn.disabled = false;
+    repeatBtn.disabled = false;
+    if (speechHint.innerText.includes("🔒")) {
+        speechHint.innerText = "";
+    }
+}
+
+/* ===================================================
+   單元 E1 背誦與讀誦邏輯
+   =================================================== */
+function startE1Practice() {
+    statementBox.style.display = 'none';
+    interactiveArea.style.display = 'none';
+    displayText.style.display = 'none';
+    reviewPanel.style.display = 'none';
+
+    recitationPanel.style.display = 'block';
+    e1TextContainer.innerText = currentConfig.text;
+    e1TextContainer.style.display = 'block';
+
+    readCount = parseInt(localStorage.getItem('unitE1_readCount') || '0', 10);
+    readCountDisplay.innerText = readCount;
+
+    switchE1SubMode("recite");
+}
+
+function switchE1SubMode(mode) {
+    e1SubMode = mode;
+    resetE1RecordState();
+
+    if (mode === "recite") {
+        modeReciteTab.classList.add('active');
+        modeReadTab.classList.remove('active');
+        recitationSubView.style.display = 'block';
+        readingSubView.style.display = 'none';
+        e1TextContainer.style.display = 'block';
+    } else {
+        modeReadTab.classList.add('active');
+        modeReciteTab.classList.remove('active');
+        readingSubView.style.display = 'block';
+        recitationSubView.style.display = 'none';
+        e1TextContainer.style.display = 'block';
+    }
+}
+
+function resetE1RecordState() {
+    clearInterval(recordTimerInterval);
+    recordTimer.style.display = 'none';
+    verifySection.style.display = 'none';
+    startRecordBtn.style.display = 'inline-block';
+    stopRecordBtn.style.display = 'none';
+    e1TextContainer.style.display = 'block';
+    timerText.innerText = "00:00";
+    recitationHint.innerText = "【開始背誦請按「錄音按鈕」，完成時請按「停止鈕」】";
+}
+
+function startRecording() {
+    recitationHint.innerText = "【開始背誦請按「錄音按鈕」，完成時請按「停止鈕」】";
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        recitationHint.innerText = "⚠️ 您的瀏覽器不支援麥克風錄音功能！";
+        return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(stream);
+            
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = processRecordingResult;
+
+            mediaRecorder.start();
+            recordStartTime = Date.now();
+
+            e1TextContainer.style.display = 'none';
+            startRecordBtn.style.display = 'none';
+            stopRecordBtn.style.display = 'inline-block';
+            recordTimer.style.display = 'block';
+            verifySection.style.display = 'none';
+
+            recordTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - recordStartTime) / 1000);
+                const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                const ss = String(elapsed % 60).padStart(2, '0');
+                timerText.innerText = `${mm}:${ss}`;
+            }, 500);
+        })
+        .catch(err => {
+            recitationHint.innerText = "⚠️ 請允許使用麥克風授權進行背誦錄音：" + err.message;
+        });
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        if (mediaRecorder.stream) {
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+    }
+    clearInterval(recordTimerInterval);
+}
+
+function processRecordingResult() {
+    recordedDurationSec = Math.round((Date.now() - recordStartTime) / 1000);
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const audioUrl = URL.createObjectURL(audioBlob);
+
+    e1TextContainer.style.display = 'block';
+    stopRecordBtn.style.display = 'none';
+    recordTimer.style.display = 'none';
+    verifySection.style.display = 'block';
+
+    audioPlayback.src = audioUrl;
+    recordResultTitle.innerText = `背誦錄音完成！長度： ${recordedDurationSec} 秒`;
+}
+
+function handleE1PassCheck() {
+    const currentRate = parseFloat(rateSelect.value) || 1.0;
+    const STARTUP_BUFFER = 800; // 💡 800ms 固定啟動延遲與聲音切換緩衝
+
+    if (recordedDurationSec <= currentConfig.targetTime) {
+        recitationHint.innerText = `🎉 恭喜您！成功在 ${recordedDurationSec} 秒內（≦ 20秒）正確背誦法相自宗！`;
+        
+        // 17字+標點，1.0倍速基準設為 4200ms
+        const dynamicDelay = Math.round((4200 / currentRate) + STARTUP_BUFFER);
+
+        let hasExecuted = false;
+        const nextStep = () => {
+            if (hasExecuted) return;
+            hasExecuted = true;
+            // 💡 傳入 true，表示結束練習時不要強制切斷正在播放的語音
+            stopPractice(true);
+        };
+
+        speechService.speak("恭喜您成功通過法相自宗背誦測試！", currentRate, nextStep);
+        setTimeout(nextStep, dynamicDelay);
+
+    } else {
+        scoreManager.incrementAttempt(false);
+        updateStatusDisplay();
+        recitationHint.innerText = `⚠️ 背誦正確！但背誦時間為 ${recordedDurationSec} 秒（目標為 ≦ 20秒）。請繼續練習加快速度！`;
+        
+        // 20字+標點，1.0倍速基準設為 4800ms
+        const dynamicDelay = Math.round((4800 / currentRate) + STARTUP_BUFFER);
+
+        let hasExecuted = false;
+        const nextStep = () => {
+            if (hasExecuted) return;
+            hasExecuted = true;
+            resetE1RecordState();
+        };
+
+        speechService.speak("背誦正確，但時間超過20秒，請再試一次", currentRate, nextStep);
+        setTimeout(nextStep, dynamicDelay);
+    }
+}
+
+function handleE1FailCheck() {
+    const currentRate = parseFloat(rateSelect.value) || 1.0;
+    const STARTUP_BUFFER = 800;
+
+    scoreManager.incrementAttempt(false);
+    updateStatusDisplay();
+    recitationHint.innerText = "💪 沒關係！請重新錄音挑戰一次，相信您能做得更好！";
+    
+    // 14字+標點，1.0倍速基準設為 3500ms
+    const dynamicDelay = Math.round((3500 / currentRate) + STARTUP_BUFFER);
+
+    let hasExecuted = false;
+    const nextStep = () => {
+        if (hasExecuted) return;
+        hasExecuted = true;
+        resetE1RecordState();
+    };
+
+    speechService.speak("沒關係，請再接再勵，重新嘗試", currentRate, nextStep);
+    setTimeout(nextStep, dynamicDelay);
+}
+
+function handleAddReadCount() {
+    if (readCount < currentConfig.targetRepeatCount) {
+        readCount++;
+        readCountDisplay.innerText = readCount;
+        localStorage.setItem('unitE1_readCount', readCount);
+
+        if (readCount >= currentConfig.targetRepeatCount) {
+            recitationHint.innerText = "🏆 恭喜您！已累計完成 300 遍法相自宗讀誦，順利通過本單元！";
+            speechService.speak("恭喜您成功完成讀誦300遍目標", rateSelect.value, () => {
+                stopPractice();
+            });
+        }
+    }
+}
+
+/* ===================================================
+   單元 A~D、E2 及 F~I2 問答邏輯
+   =================================================== */
+function startNewQuestion() {
+    displayText.style.display = 'flex';
+    reviewPanel.style.display = 'none';
+    interactiveArea.style.display = 'none';
+    reviewContent.innerHTML = "";
+    userAnswerInput.value = "";
+    speechHint.innerText = "";
+
+    if (currentConfig.hasTreeDiagram) {
+        treeDiagramArea.style.display = 'block';
+    } else {
+        treeDiagramArea.style.display = 'none';
+    }
+
+    if (currentConfig.isSequential) {
+        currentQ = currentQuestionList[sequentialIndex];
+    } else {
+        let newIndex;
+        do {
+            newIndex = Math.floor(Math.random() * currentQuestionList.length);
+        } while (currentQuestionList.length > 1 && newIndex === lastQuestionIndex);
+        lastQuestionIndex = newIndex;
+        currentQ = currentQuestionList[newIndex];
+    }
+
+    subQIndex = 0;
+    selectedPathIndex = -1; // 💡 重置路線
+    userSessionRecords = [];
+
+    scoreManager.startNewQuestion();
+    updateStatusDisplay();
+
+    askSubQuestion(true);
+}
+
+function getSpeechQuestionText(index) {
+    if (currentQ.speechQuestions && currentQ.speechQuestions[index]) {
+        return currentQ.speechQuestions[index];
+    }
+    return currentQ.questions[index].replace(/[（\(]/g, ' ').replace(/[）\)]/g, ' ').trim();
+}
+
+function askSubQuestion(readStatement) {
+    userAnswerInput.value = "";
+    speechHint.innerText = "";
+    interactiveArea.style.display = 'none';
+
+    if (currentConfig.showStatement) {
+        statementBox.innerText = `【論式】${currentQ.statement}`;
+        statementBox.style.display = 'block';
+    } else {
+        statementBox.style.display = 'none';
+    }
+
+    if (currentConfig.hideQuestionText) {
+        displayText.innerText = "🎧 請聽語音題目，回答「對」或「錯」";
+    } else {
+        displayText.innerText = `👉 請回答：【${currentQ.questions[subQIndex]}】`;
+    }
+
+    let textToSpeak = "";
+    if (currentUnit === "E2") {
+        textToSpeak = currentQ.statement;
+    } else {
+        const speechText = getSpeechQuestionText(subQIndex);
+        textToSpeak = (readStatement ? currentQ.statement + "， " : "") + speechText;
+    }
+
+    speechService.speak(textToSpeak, rateSelect.value, () => {
+        interactiveArea.style.display = 'block';
+        userAnswerInput.value = "";
+        if (!isTreeDiagramOpen) {
+            userAnswerInput.focus();
+        }
+    });
+}
+
+function handleRepeat() {
+    if (!isPracticing) return;
+    const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
+    updateStatusDisplay();
+
+    if (incResult.justResetStreak) {
+        speechHint.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數已歸零！";
+    }
+
+    interactiveArea.style.display = 'none';
+    let textToSpeak = "";
+    if (currentUnit === "E2") {
+        textToSpeak = currentQ.statement;
+    } else {
+        const speechText = getSpeechQuestionText(subQIndex);
+        textToSpeak = currentQ.statement + "， " + speechText;
+    }
+
+    speechService.speak(textToSpeak, rateSelect.value, () => {
+        interactiveArea.style.display = 'block';
+        userAnswerInput.value = "";
+        if (!isTreeDiagramOpen) {
+            userAnswerInput.focus();
+        }
+    });
+}
+
+/**
+ * 💡 Gemini Live STT 麥克風開關控制函數
+ * 動態抽取當前「題目內文」與「預期答案詞彙」，送給伺服器代理作為 Context 與 Vocabulary
+ */
+function handleMicToggle() {
+    if (speechService.isListening) {
+        speechService.stopRecognition();
+    } else {
+        let currentContextText = "";
+        let expectedVocabList = [];
+
+        if (currentQ) {
+            if (currentUnit === "E2") {
+                currentContextText = currentQ.statement;
+            } else {
+                currentContextText = `${currentQ.statement}，${getSpeechQuestionText(subQIndex)}`;
+            }
+
+            if (currentQ.answers) {
+                if (Array.isArray(currentQ.answers[0])) {
+                    // 多路徑答案 (如 H2、I2)
+                    currentQ.answers.forEach(path => {
+                        if (path[subQIndex]) expectedVocabList.push(path[subQIndex]);
+                    });
+                } else {
+                    // 單路徑答案
+                    if (currentQ.answers[subQIndex]) expectedVocabList.push(currentQ.answers[subQIndex]);
+                }
+            }
+        }
+
+        speechService.startRecognition(
+            (cleanText) => {
+                const normalizedText = AnswerEvaluator.normalizeSTTText(cleanText);
+                userAnswerInput.value = normalizedText;
+                speechHint.innerText = `Gemini 辨識結果："${normalizedText}"`;
+            },
+            (errorMsg) => { speechHint.innerText = `⚠️ 語音辨識提醒：${errorMsg}`; },
+            (isListening) => {
+                if (isListening) {
+                    micBtn.classList.add('recording');
+                    speechHint.innerText = "🎙️ 連線 Gemini Live 中，請說出答案...";
+                } else {
+                    micBtn.classList.remove('recording');
+                }
+            },
+            currentContextText,
+            expectedVocabList
+        );
+    }
+}
+
+function handleSubmitAnswer() {
+    speechService.stopRecognition();
+    const val = userAnswerInput.value.trim();
+    let std = "";
+    let isCorrect = false;
+
+    // --- 處理 H2 / I2 雙重路徑與舊單元單一路徑的動態判斷 ---
+    if (currentQ.answers && Array.isArray(currentQ.answers[0])) {
+        // 【二維陣列】多路徑模式
+        if (subQIndex === 0) {
+            let matched = false;
+            for (let i = 0; i < currentQ.answers.length; i++) {
+                const pathStd = currentQ.answers[i][0];
+                const checkPass = currentConfig.isSequential ? (val === pathStd) : AnswerEvaluator.checkAnswer(val, pathStd);
+                if (checkPass) {
+                    isCorrect = true;
+                    selectedPathIndex = i; // 鎖定路線
+                    std = pathStd;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                selectedPathIndex = 0;
+                std = currentQ.answers.map(p => p[0]).join(" 或 ");
+            }
+        } else {
+            std = currentQ.answers[selectedPathIndex][subQIndex];
+            isCorrect = currentConfig.isSequential ? (val === std) : AnswerEvaluator.checkAnswer(val, std);
+        }
+    } else {
+        // 【一維陣列】單一路徑
+        std = currentQ.answers[subQIndex];
+        if (currentConfig.isSequential) {
+            isCorrect = (val === std);
+        } else {
+            isCorrect = AnswerEvaluator.checkAnswer(val, std);
+        }
+    }
+
+    userSessionRecords.push({
+        q: currentUnit === "E2" ? currentQ.statement : currentQ.questions[subQIndex],
+        ans: val,
+        correct: isCorrect,
+        std: std === "" ? "(留空/無法安立)" : std
+    });
+
+    subQIndex++;
+    if (subQIndex < currentQ.questions.length) {
+        askSubQuestion(false);
+    } else {
+        showReviewPanel();
+    }
+}
+
+function renderReviewRows() {
+    let html = "";
+    userSessionRecords.forEach((rec, idx) => {
+        const statusIcon = rec.correct ? "✅" : "❌";
+        html += `<div class="review-row">
+            <strong>Q${idx + 1}: ${rec.q} ${statusIcon}</strong><br>
+            👉 您的輸入：<span style="color: #2980b9;">${rec.ans || "(未填)"}</span><br>
+            🎯 標準答案：<span style="color: #27ae60; font-weight: bold;">${rec.std}</span>
+        </div>`;
+    });
+    reviewContent.innerHTML = html;
+}
+
+function showReviewPanel() {
+    interactiveArea.style.display = 'none';
+    const allCorrect = userSessionRecords.every(r => r.correct);
+
+    if (allCorrect) {
+        const scoreResult = scoreManager.recordResult(true, currentConfig.isSequential);
+        updateStatusDisplay();
+
+        renderReviewRows();
+        reviewPanel.style.display = 'block';
+
+        if (currentConfig.isSequential) {
+            sequentialIndex++;
+            if (sequentialIndex >= currentQuestionList.length) {
+                reviewTitle.innerText = "🏆 恭喜您！成功順利完成本單元的所有練習題！";
+                speechService.speak("恭喜您成功通過本單元的所有練習", rateSelect.value, () => { stopPractice(); });
+            } else {
+                reviewTitle.innerText = "🎉 本題完全答對！準備進入下一題...";
+                speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+            }
+        } else {
+            if (scoreResult.isPassed) {
+                reviewTitle.innerText = "🏆 恭喜您！成功通過本單元的測試！";
+                speechService.speak("恭喜您通過本單元的測試，請重新選擇練習單元", rateSelect.value, () => { stopPractice(); });
+            } else {
+                reviewTitle.innerText = "🎉 本題完全答對！進度 +1，準備進入下一題...";
+                speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+            }
+        }
+    } else {
+        const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
+        updateStatusDisplay();
+
+        renderReviewRows();
+        reviewPanel.style.display = 'block';
+
+        if (incResult.justResetStreak) {
+            reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請繼續挑戰本題...";
+            speechService.speak("嘗試超過三次，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
+                setTimeout(retryCurrentQuestion, 1500);
+            });
+        } else {
+            reviewTitle.innerText = "❌ 答錯了，請繼續挑戰本題！";
+            speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
+                setTimeout(retryCurrentQuestion, 1500);
+            });
+        }
+    }
+}
+
+function retryCurrentQuestion() {
+    reviewPanel.style.display = 'none';
+    subQIndex = 0;
+    selectedPathIndex = -1; // 💡 重置路線
+    userSessionRecords = [];
+    updateStatusDisplay();
+    askSubQuestion(true);
+}
