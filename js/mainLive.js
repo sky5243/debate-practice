@@ -147,6 +147,12 @@ function updateUnitPreview() {
 function startPractice() {
     isPracticing = true;
     currentUnit = unitSelect.value;
+
+    // 💡 趁使用者點擊「開始練習」按鈕時，取得瀏覽器授權，在背景偷偷預熱麥克風！
+    if (speechService && typeof speechService.preWarmMicrophone === 'function') {
+        speechService.preWarmMicrophone();
+    }
+    
     currentConfig = getUnitConfig(currentUnit);
     currentQuestionList = getQuestionList(currentUnit);
     
@@ -187,10 +193,10 @@ function stopPractice(keepSpeaking = false) {
     // 1. 強制停止語音服務（除非特別指定 keepSpeaking 為 true）
     if (speechService && !keepSpeaking) {
         speechService.stopSpeaking();
-        speechService.stopRecognition();
+        speechService.stopRecognition(true); // 💡 加上 true，徹底關閉麥克風
     } else if (speechService) {
         // 即使保留朗讀，還是要停止語音辨識
-        speechService.stopRecognition();
+        speechService.stopRecognition(true); // 💡 加上 true，徹底關閉麥克風
     }
 
     // 2. 強制停止 E1 錄音與計時器

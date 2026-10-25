@@ -62,40 +62,22 @@ export class SpeechService {
         }
     }
 
-    async startRecording(onStateChange, onError) {
-        if (this.isListening) return false;
-
-        // 💡 檢查是否已連線，若尚未連線則擋下並提示
-        if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            if (onError) onError('尚未連線到雲端伺服器，請等待連線成功後再嘗試！');
-            return false;
-        }
-
-        this.historyText = "";
-        this.lastRawText = "";
+    // 💡 新增：獨立的麥克風預熱函式
+    async preWarmMicrophone() {
+        if (this.mediaStream) return true; // 已經預熱過就不重複執行
 
         try {
-            this.lastTranscript = "";
             this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.isListening = true;
-
-            if (onStateChange) onStateChange('recording');
-
-            // 💡 在開始錄音時，直接發送 config 即可
-            this.ws.send(JSON.stringify({ type: 'config', context: this.currentContext }));
-
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            if (this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
-            }
-
+            
             await this.audioContext.audioWorklet.addModule('pcm-processor.js');
 
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
             
             this.workletNode.port.onmessage = (event) => {
-                if (!this.isListening) return;
+                // 💡 關鍵：isListening 為 false 時（放開按鈕或預熱中），音訊直接丟棄，不會耗費網路
+                if (!this.isListening) return; 
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(event.data);
                 }
@@ -106,44 +88,83 @@ export class SpeechService {
             dummyGain.gain.value = 0;
             this.workletNode.connect(dummyGain);
             dummyGain.connect(this.audioContext.destination);
+            
+            return true;
+        } catch (error) {
+            console.error('麥克風預熱失敗:', error);
+            return false;
+        }
+    }
+
+    // 💡 修改：按下麥克風時的邏輯變得極度輕量化
+    async startRecording(onStateChange, onError) {
+        if (this.isListening) return false;
+
+        if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            if (onError) onError('尚未連線到雲端伺服器，請等待連線成功後再嘗試！');
+            return false;
+        }
+
+        this.historyText = "";
+        this.lastRawText = "";
+
+        try {
+            this.lastTranscript = "";
+            
+            // 如果某種原因沒有預熱到，這裡作為備案重新啟動
+            if (!this.mediaStream) {
+                const success = await this.preWarmMicrophone();
+                if (!success) throw new Error("麥克風存取失敗");
+            }
+
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
+            this.isListening = true; // 💡 打開音訊傳送閘門
+
+            // 💡 瞬間切換紅燈 (毫秒級)
+            if (onStateChange) onStateChange('recording');
+
+            this.ws.send(JSON.stringify({ type: 'config', context: this.currentContext }));
 
             return true;
 
         } catch (error) {
-            console.error('麥克風授權失敗或發生錯誤:', error);
+            console.error('啟動錄音失敗:', error);
             if (onError) onError('無法存取麥克風，請檢查權限設定。');
             this.isListening = false;
             return false;
         }
     }
-
+    
     async stopRecordingAndSend({ onStateChange }) {
-        this.stopRecognition();
-        
-        // 💡 已移除 this.ws.close()，讓 WebSocket 連線保持開啟，下一題就不需等待！
+        // 💡 傳入 false：代表「只停止錄音(軟體靜音)，不切斷麥克風硬體電源」
+        this.stopRecognition(false); 
         
         this.isThinking = false;
         if (onStateChange) onStateChange('idle');
     }
 
-    stopRecognition() {
-        this.isListening = false;
-        if (this.workletNode) {
-            this.workletNode.port.onmessage = null;
-            this.workletNode.disconnect();
-            this.workletNode = null;
-        }
-        if (this.processor) {
-            this.processor.disconnect();
-            this.processor = null;
-        }
-        if (this.audioContext) {
-            this.audioContext.close();
-            this.audioContext = null;
-        }
-        if (this.mediaStream) {
-            this.mediaStream.getTracks().forEach(track => track.stop());
-            this.mediaStream = null;
+    // 💡 新增 fullStop 參數，用來區分是「放開按鈕」還是「結束練習」
+    stopRecognition(fullStop = false) {
+        this.isListening = false; // 關閉資料傳送閘門
+        
+        // 💡 只有在「中斷練習 / 更換單元」時，才徹底關閉麥克風硬體
+        if (fullStop) {
+            if (this.workletNode) {
+                this.workletNode.port.onmessage = null;
+                this.workletNode.disconnect();
+                this.workletNode = null;
+            }
+            if (this.audioContext) {
+                this.audioContext.close();
+                this.audioContext = null;
+            }
+            if (this.mediaStream) {
+                this.mediaStream.getTracks().forEach(track => track.stop());
+                this.mediaStream = null;
+            }
         }
     }
 
