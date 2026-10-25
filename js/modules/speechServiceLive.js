@@ -1,145 +1,175 @@
-/**
- * 語音服務模組 (Live API 升級版)
- */
 export class SpeechService {
     constructor() {
-        this.synth = window.speechSynthesis;
+        this.audioContext = null;
+        this.mediaStream = null;
+        this.processor = null;
         this.isListening = false;
-        this.targetVoice = null;
-        
-        this.socket = null;
-        this.mediaRecorder = null;
-        this.stream = null;
-
-        this._initVoices();
-        if (this.synth && this.synth.onvoiceschanged !== undefined) {
-            this.synth.onvoiceschanged = () => this._initVoices();
-        }
+        this.isThinking = false;
+        this.ws = null;
+        this.onLiveResult = null;
+        this.currentContext = "";
+        this.lastTranscript = ""; // 💡 用於防止重複字
+        this.historyText = ""; // 💡 用於儲存停頓前已完成的歷史字串
+        this.lastRawText = "";  // 💡 紀錄上一次接收到的原始文字
     }
 
-    _initVoices() {
-        if (!this.synth) return;
-        const voices = this.synth.getVoices();
-        this.targetVoice = voices.find(v => v.lang === 'zh-TW' || v.lang === 'zh_TW') || 
-                           voices.find(v => v.lang.startsWith('zh')) || null;
-    }
+    async startRecording(onStateChange, onError) {
+        if (this.isListening) return false;
 
-    correctPhoneticsForTTS(text) {
-        if (!text) return "";
-        let ttsText = text;
-        const phoneticMap = {
-            "明了": "明瞭",       
-            "補特伽羅": "補特茄羅", 
-            "伽羅": "茄羅",
-            "般若": "缽惹"        
-        };
-        for (const [raw, phonetic] of Object.entries(phoneticMap)) {
-            ttsText = ttsText.replaceAll(raw, phonetic);
-        }
-        return ttsText;
-    }
+        // 💡 每次按住麥克風重新錄音時，重置歷史紀錄
+        this.historyText = "";
+        this.lastRawText = "";
 
-    speak(text, rate = 1.25, onEndCallback) {
-        if (!this.synth) return;
-        if (this.synth.paused) this.synth.resume();
-        if (this.synth.speaking || this.synth.pending) this.synth.cancel();
-        if (!this.targetVoice) this._initVoices();
+        try {
+            this.lastTranscript = "";
+            this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            this.isListening = true;
 
-        const correctedText = this.correctPhoneticsForTTS(text);
-        const utter = new SpeechSynthesisUtterance(correctedText);
-        utter.lang = 'zh-TW';
-        utter.rate = parseFloat(rate) || 1.25;
-        if (this.targetVoice) utter.voice = this.targetVoice;
+            if (onStateChange) onStateChange('recording');
 
-        if (onEndCallback) {
-            utter.onend = onEndCallback;
-            utter.onerror = (e) => {
-                console.warn('Speech TTS Error:', e);
-                onEndCallback();
+            this.ws = new WebSocket('ws://localhost:3000');
+
+            this.ws.onopen = () => {
+                this.ws.send(JSON.stringify({ type: 'config', context: this.currentContext }));
             };
-        }
 
-        setTimeout(() => this.synth.speak(utter), 50);
-    }
-
-    stopSpeaking() {
-        if (this.synth) this.synth.cancel();
-    }
-
-    startRecognition(onResult, onError, onStateChange, context = "", vocab = []) {
-        this.stopRecognition(); 
-
-        const proxyUrl = 'ws://localhost:3000';
-        this.socket = new WebSocket(proxyUrl);
-
-        this.socket.onopen = () => {
-            const configMsg = {
-                type: 'config',
-                context: context,
-                vocab: vocab
-            };
-            this.socket.send(JSON.stringify(configMsg));
-
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    this.stream = stream;
-                    this.isListening = true;
-                    if (onStateChange) onStateChange(true);
-
-                    this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-                    
-                    // 💡 安全修正：使用可選鏈 ?. 避免 this.socket 為 null 時崩潰
-                    this.mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0 && this.socket && this.socket.readyState === WebSocket.OPEN) {
-                            this.socket.send(event.data);
+            this.ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.transcript && this.onLiveResult) {
+                        // 💡 過濾短時間內的重複字，避免「錯」被連續印出兩次
+                        if (data.transcript !== this.lastTranscript) {
+                            this.lastTranscript = data.transcript;
+                            this.onLiveResult(data.transcript);
                         }
-                    };
-                    this.mediaRecorder.start(250);
-                })
-                .catch(err => {
-                    console.error("Microphone error:", err);
-                    if (onError) onError("無法存取麥克風");
-                });
-        };
-
-        this.socket.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.text && onResult) {
-                    onResult(data.text);
+                    }
+                } catch (e) {
+                    console.error("解析 WebSocket 訊息失敗:", e);
                 }
-            } catch(e) {
-                console.error("Message format error", e);
+            };
+
+            this.ws.onerror = (err) => {
+                console.error('WebSocket 錯誤:', err);
+                if (onError) onError('與語音伺服器連線發生錯誤');
+            };
+
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
             }
-        };
 
-        this.socket.onerror = () => {
-            if (onError) onError("伺服器連線發生錯誤");
-        };
+            // 💡 1. 載入 AudioWorklet 獨立音訊處理模組
+            await this.audioContext.audioWorklet.addModule('pcm-processor.js');
 
-        this.socket.onclose = () => {
+            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+            
+            // 💡 2. 建立 Worklet 節點 (取代舊有的 createScriptProcessor)
+            this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
+            
+            // 💡 3. 接收來自獨立執行緒處理完的 16kHz PCM 音訊資料
+            this.workletNode.port.onmessage = (event) => {
+                if (!this.isListening) return;
+                
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(event.data);
+                }
+            };
+
+            // 連接音訊鏈結
+            source.connect(this.workletNode);
+            const dummyGain = this.audioContext.createGain();
+            dummyGain.gain.value = 0;
+            this.workletNode.connect(dummyGain);
+            dummyGain.connect(this.audioContext.destination);
+
+            return true;
+
+        } catch (error) {
+            console.error('麥克風授權失敗或發生錯誤:', error);
+            if (onError) onError('無法存取麥克風，請檢查權限設定。');
             this.isListening = false;
-            if (onStateChange) onStateChange(false);
-        };
+            return false;
+        }
+    }
+
+    async stopRecordingAndSend({ onStateChange }) {
+        this.stopRecognition();
+        
+        setTimeout(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close();
+            }
+        }, 1200);
+        
+        this.isThinking = false;
+        if (onStateChange) onStateChange('idle');
     }
 
     stopRecognition() {
-        // 💡 安全修正：優先解綁 ondataavailable，停止麥克風持續觸發發送事件
-        if (this.mediaRecorder) {
-            this.mediaRecorder.ondataavailable = null;
-            if (this.mediaRecorder.state !== 'inactive') {
-                this.mediaRecorder.stop();
-            }
-            this.mediaRecorder = null;
-        }
-        if (this.stream) {
-            this.stream.getTracks().forEach(track => track.stop());
-            this.stream = null;
-        }
-        if (this.socket) {
-            this.socket.close();
-            this.socket = null;
-        }
         this.isListening = false;
+        
+        // 💡 清理 AudioWorkletNode
+        if (this.workletNode) {
+            this.workletNode.port.onmessage = null;
+            this.workletNode.disconnect();
+            this.workletNode = null;
+        }
+        if (this.processor) {
+            this.processor.disconnect();
+            this.processor = null;
+        }
+        if (this.audioContext) {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+        }
+    }
+
+    stopSpeaking() {
+        window.speechSynthesis.cancel();
+    }
+
+    /**
+     * 💡 TTS 語音發音校正：將多音字與專有名詞轉換為語音引擎能正確讀出的諧音字
+     */
+    prepareTextForTTS(text) {
+        if (!text) return "";
+        let ttsText = text;
+
+        const ttsPronunciationMap = [
+            { pattern: /明了/g, replace: "明瞭" },
+            { pattern: /補特伽羅/g, replace: "補特茄羅" },
+            { pattern: /柱子/g, replace: "注子" },
+            // 未來若發現其他念錯的佛學名詞，可直接在此新增規則
+        ];
+
+        for (const rule of ttsPronunciationMap) {
+            ttsText = ttsText.replace(rule.pattern, rule.replace);
+        }
+
+        return ttsText;
+    }
+
+    speak(text, rate = 1.0, onEndCallback = null) {
+        this.stopSpeaking();
+        if (!text) {
+            if (onEndCallback) onEndCallback();
+            return;
+        }
+
+        // 💡 關鍵修改：先將文字轉為 TTS 正確發音版本
+        const ttsText = this.prepareTextForTTS(text);
+
+        const utterance = new SpeechSynthesisUtterance(ttsText);
+        utterance.lang = 'zh-TW';
+        utterance.rate = rate;
+        if (onEndCallback) {
+            utterance.onend = onEndCallback;
+            utterance.onerror = onEndCallback;
+        }
+        window.speechSynthesis.speak(utterance);
     }
 }

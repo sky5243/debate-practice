@@ -1,29 +1,37 @@
-# 專案升級目標：佛教攝類學語音辯論（基於 Proxy 架構的多模態重構）
+# 專案微調目標：gemini-stt-proxy 後端 Pure STT 架構重構
 
-## ⚠️ 專案現有架構與最高開發原則
-1. **穩定舊版保護**：`index.html`, `main.js`, `speechService.js`（請絕對不要修改這三個檔案，必須保持舊系統原貌運作）。
-2. **待重構的 Live 版（本次修改目標）**：`index_live.html`, `mainLive.js`, `speechServiceLive.js`。這是本次的重構沙盒，請直接覆寫這三個檔案，清除裡面殘留的錯誤 WebSocket 或舊版 Web Speech API 邏輯。
-3. **後端 Proxy 伺服器**：針對 `gemini-stt-proxy` 資料夾進行修改，用於隱藏 Google API Key 並處理音訊轉發。
+## ⚠️ 專案現況與最高保護原則
+1. **前端檔案絕對保持不動**：
+   - 舊版檔案：`index.html`, `main.js`, `speechService.js`（保持原貌運作）。
+   - Live 版檔案：`index_live.html`, `mainLive.js`, `speechServiceLive.js`（已包含完整錄音與 UI 邏輯，請勿修改）。
+   - 評分與同音字校正檔：`answerEvaluator.js`（前端已包含完整的 `normalizeSTTText` 校正字典，請勿修改）。
+2. **本次唯一修改目標**：僅針對 `gemini-stt-proxy/server.js` 後端程式碼進行微調。
 
-## 🎯 本次重構具體任務
+---
 
-### 1. 前端重構 (`index_live.html`, `mainLive.js`, `speechServiceLive.js`)
-* **移除舊邏輯**：徹底清除這三個檔案中所有的 Web Speech API、WebSocket 以及針對同音字手動替換（`replace`）的硬編碼字典程式碼。
-* **改為錄音直傳**：實作 `MediaRecorder` 錄音功能。當使用者按住錄音、放開結束後（即使語音極短，只有一個「無」或「有」字），將音訊包裝為 `Blob`（如 `.webm` 或 `.wav`），透過 `fetch` POST 傳送到本機的 `gemini-stt-proxy` 後端 API。
-* **介面更新**：確保 `index_live.html` 有對應的錄音按鈕狀態（錄音中、AI 思考中）與完整的錯誤訊息顯示區塊。
+## 🎯 後端重構任務 (`gemini-stt-proxy/server.js`)
 
-### 2. 後端重構 (`gemini-stt-proxy` 內的 Node.js 程式)
-* **音訊接收與處理**：請設定路由（如 `/api/chat`），並使用 `multer` 等套件來接收前端傳來的音訊檔，然後將音訊檔與 Prompt 一同發送給 Gemini 進行多模態解析。
-* **強制升級官方 SDK**：請確保 `package.json` 使用最新版的 Google 官方 Node.js 支援套件（如官方推薦的最新 SDK），**絕對禁止使用已被廢棄的 `google-generativeai` 舊版函式庫**。
-* **模型選型與環境變數（高免費額度優先）**：
-  請勿在程式碼中硬編碼模型名稱。請建立 `.env` 檔案來管理模型版本與 API Key。
-  由於本網頁會公開給多人使用，必須確保 API 呼叫額度充足。請在 `.env` 預設填入 Google 官方目前提供「最高免費額度」且支援多模態的 Flash 家族模型（例如 `GEMINI_MODEL_VERSION=gemini-1.5-flash` 或 `gemini-2.0-flash`）。**絕對不要預設使用 Pro 家族模型**（免費額度極低）。
-* **防護機制（Quota Exceeded 處理）**：
-  在呼叫 Gemini API 時，請務必攔截 `429 Too Many Requests` 的錯誤。當發生額度耗盡或頻率過高時，請回傳友善的錯誤訊息給前端（例如：「目前使用人數較多，API 額度暫時達上限，請稍後再試。」），避免伺服器崩潰。
+### 1. 定位改為「純語音聽寫器（Pure STT）」
+* 將 API 路由（`/api/chat`）調整為純聽寫模式。
+* 呼叫 Gemini 後端時，只接收語音聽寫結果，固定回傳格式為：
+  `res.json({ transcript, reply: '', text: transcript })`
+* **絕對禁止**讓 AI 產生任何導師評語、理路解釋或下一輪辯駁提問，`reply` 欄位請固定回傳空字串 `""`。
+* 後端不需要額外做 Regex 文字覆蓋替換，直接將 Gemini 的純聽寫結果回傳給前端，由前端 `AnswerEvaluator` 統一處理顯示與對錯比對。
 
-### 3. 設定精準的 System Prompt（領域知識注入）
-請在後端呼叫 Gemini 的程式碼中，強制寫入以下 System Prompt 作為 Context：
-> 「你是一位嚴謹的佛教攝類學辯論導師。請直接聆聽傳入的音訊內容。使用者可能會回答極短的單字（如『無』、『有』、『是』、『非』），或使用專業術語（如：承許、不許、應成、反體、成物、所知、遍充、常與無常等）。請直接依據攝類學的語意脈絡，精準判斷使用者的真實意圖（即使發音帶有腔調或類似同音字，請自動在理解時糾正），並根據理路給出下一輪的辯駁與指導文字。」
+### 2. 注入佛教攝類學領域知識的 System Prompt
+請在 `systemInstruction` 中配置以下提示詞，利用專有名詞庫協助 Gemini 提升語音音素解碼的精準度，同時嚴格限制輸出行為：
 
-### 4. 自動環境配置與除錯
-* 請檢查 `gemini-stt-proxy` 內的 `package.json`，若缺少處理上傳檔案 (`multer`)、處理跨域 (`cors`) 或讀取環境變數 (`dotenv`) 等必要套件，請自動修改並在 Terminal 執行 `npm install`。
+> 「你是一個極度精準的語音轉文字（STT）轉換器。你的唯一任務是將傳入的語音檔轉換為正確的繁體中文文字。
+>
+> 這是一段佛教攝類學辯論的語音，請依據攝類學語意脈絡精準聽寫，常見術語包括：
+> 1. 極短單字：如『無』、『有』、『對』、『錯』、『是』、『非』、『因』。
+> 2. 格式與關係用語：如『承許』、『應成』、『何以故』、『因不成』、『因不成立』、『不遍』、『周遍』、『的話』、『應當』、『應當遍』、『有法』、『無法安立』。
+> 3. 攝類學專有名詞：如『無我』、『法』、『成實』、『所知』、『實事』、『無常』、『所作』、『色法』、『物質』、『柱子』、『瓶子』、『聲音』、『虛空』、『心識』、『遍智』、『覺知』、『明了』、『分別心』、『心不相應行法』、『補特伽羅』、『常法』、『反體』、『兔子角』、『所諍事』、『所顯法』、『論式的宗』、『諍因結合的宗』、『周遍的敍述』等。
+>
+> 【絕對輸出限制】：
+> 請精準聽寫傳入的語音，絕對不要加上任何標點符號說明、不要回答問題、不要給予意見、不要產生任何『導師指導：』或下一輪辯答文字。你只需輸出聽到的繁體中文原文。」
+
+### 3. 環境與模型配置
+* 請確保使用 `@google/genai` 官方最新 SDK。
+* `.env` 中的 `GEMINI_MODEL_VERSION` 請預設選用支援 `generateContent` 的 Flash 多模態模型（例如 `gemini-2.5-flash` 或 `gemini-3.5-flash-lite`）。
+* 保留 `429 Too Many Requests` 與 `RESOURCE_EXHAUSTED` 的 Quota 攔截與友善錯誤提示（「目前使用人數較多，API 額度暫時達上限，請稍後再試。」）。

@@ -4,9 +4,9 @@
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>辯論理路全題庫單元練習系統</title>
+    <title>辯論理路全題庫單元練習系統 (Gemini Live 測試版)</title>
     <style>
-        /* */
+        /* 保留您原本完整的 CSS 樣式設定 */
         * { box-sizing: border-box; }
         body { 
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
@@ -74,9 +74,10 @@
             transition: all 0.2s ease; padding: 0; flex-shrink: 0;
         }
         .icon-btn:disabled { background-color: #cbd5e1 !important; color: #94a3b8 !important; cursor: not-allowed !important; }
-        .mic-btn { background-color: #e2e8f0; color: #475569; }
+        .mic-btn { background-color: #e2e8f0; color: #475569; touch-action: none; user-select: none; }
         .mic-btn:hover { background-color: #cbd5e1; }
         .mic-btn.recording { background-color: #ef4444; color: white; animation: pulse 1.2s infinite; }
+        .mic-btn.thinking { background-color: #7c3aed; color: white; cursor: wait; }
         @keyframes pulse {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
@@ -91,13 +92,39 @@
         .repeat-btn:hover { background-color: #d68910; }
         .repeat-btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .speech-hint { font-size: 14px; color: #64748b; min-height: 20px; margin-top: 4px; }
+        .error-box {
+            display: none;
+            margin: 10px auto 0 auto;
+            max-width: 580px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #b91c1c;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: left;
+            line-height: 1.5;
+        }
+        .tutor-box {
+            display: none;
+            margin: 10px auto 0 auto;
+            max-width: 580px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            background: #f5f3ff;
+            border: 1px solid #ddd6fe;
+            color: #5b21b6;
+            font-size: 14px;
+            text-align: left;
+            line-height: 1.6;
+        }
         .review-panel { 
             background: #fff8e1; border: 2px solid #ffb300; border-radius: 12px; 
             padding: 20px; margin: 20px 0; display: none; text-align: left; 
         }
         .review-row { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed #ffe082; font-size: 15px; line-height: 1.5; }
 
-        /* */
         .recitation-panel {
             display: none;
             background: #fdfbf7;
@@ -140,7 +167,6 @@
         .btn-purple:disabled, .btn-brown:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .audio-playback { margin: 15px 0; width: 100%; max-width: 400px; }
 
-        /* */
         .tree-toggle-btn {
             background-color: #8b5cf6; color: white; border: none; padding: 10px 20px;
             font-weight: bold; cursor: pointer; border-radius: 8px; margin-bottom: 12px;
@@ -161,15 +187,14 @@
 </head>
 <body>
     <div class="container">
-        <h1>辯論理路全題庫單元練習系統</h1>
+        <!-- 💡 標題標註 Live 測試軌 -->
+        <h1>辯論理路全題庫單元練習系統 <span style="font-size: 0.55em; color: #e74c3c; background: #fadbd8; padding: 2px 8px; border-radius: 4px; vertical-align: middle;">⚡ Gemini Live 測試軌</span></h1>
         
         <div class="control-panel">
             <div class="control-group">
                 <label for="unitSelect">單元：</label>
                 <select id="unitSelect">
                     <option value="A">【單元 A】模組、格式用語</option>
-                    <!-- 原本：<option value="B">【單元 B】模組內容</option> -->
-                    <!-- 請替換為下方兩行： -->
                     <option value="B1">【單元 B1】模組內容（去格式用語）</option>
                     <option value="B2">【單元 B2】模組內容（模組安立）</option>
                     <option value="C">【單元 C】論式的三段論述</option>
@@ -180,10 +205,9 @@
                     <option value="F1">【單元 F1】三段論述——一般法相</option>
                     <option value="F2">【單元 F2】錯誤推論分析——一般法相</option>
                     <option value="G1">【單元 G1】四種回答——複述</option>
-                    <option value="G2">【單元 G2】四種回答——立宗</option> <!-- 新增這一行 -->
+                    <option value="G2">【單元 G2】四種回答——立宗</option>
                     <option value="H1">【單元 H1】綜合回答</option>
                     <option value="H2">【單元 H2】綜合回答</option>
-                    <!-- 💡 新增下面兩行 -->
                     <option value="I1">【單元 I1】綜合回答——無效有法</option>
                     <option value="I2">【單元 I2】綜合回答——無效有法（含因/周遍）</option>
                 </select>
@@ -255,15 +279,17 @@
             <button class="repeat-btn" id="repeatBtn">🔊 論式再說一遍</button>
             
             <div class="input-wrapper">
-                <input type="text" id="userAnswerInput" placeholder="輸入或使用語音答題..." autocomplete="off">
-                <button type="button" class="icon-btn mic-btn" id="micBtn" title="點擊進行語音辨識">
+                <input type="text" id="userAnswerInput" placeholder="輸入文字，或按住麥克風語音答題..." autocomplete="off">
+                <button type="button" class="icon-btn mic-btn" id="micBtn" title="按住錄音，放開後送出">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                 </button>
                 <button type="button" class="icon-btn send-btn" id="submitAnsBtn" title="送出答案">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
             </div>
-            <div class="speech-hint" id="speechHint"></div>
+            <div class="speech-hint" id="speechHint">按住麥克風錄音，放開後會送給 Gemini 辨識（即使只有「有」或「無」也可）。</div>
+            <div class="error-box" id="errorBox"></div>
+            <div class="tutor-box" id="tutorBox"></div>
         </div>
 
         <div class="recitation-panel" id="recitationPanel">
@@ -322,7 +348,7 @@
         </div>
     </div>
 
-    <!-- 載入 ES6 主程式進入點 -->
-    <script type="module" src="js/main.js"></script>
+    <!-- 💡 載入 Gemini Live 專用主程式 entry point -->
+    <script type="module" src="./mainLive.js?v=2.0"></script>
 </body>
 </html>

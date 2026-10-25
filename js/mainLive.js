@@ -16,6 +16,9 @@ let subQIndex = 0;
 let selectedPathIndex = -1; // 💡 記錄鎖定的路線索引
 let lastQuestionIndex = -1;
 let userSessionRecords = [];
+let prefixText = ""; // 游標前的文字
+let suffixText = ""; // 游標後的文字
+let debounceTimer = null;
 
 // E1 背誦與讀誦相關變數
 let e1SubMode = "recite"; // "recite" 背誦 | "read" 讀誦
@@ -44,9 +47,12 @@ const userAnswerInput = document.getElementById('userAnswerInput');
 const micBtn = document.getElementById('micBtn');
 const submitAnsBtn = document.getElementById('submitAnsBtn');
 const speechHint = document.getElementById('speechHint');
+const errorBox = document.getElementById('errorBox');
+const tutorBox = document.getElementById('tutorBox');
 const reviewPanel = document.getElementById('reviewPanel');
 const reviewTitle = document.getElementById('reviewTitle');
 const reviewContent = document.getElementById('reviewContent');
+const DEFAULT_MIC_HINT = '💡 【操作口訣】長按說話 ➔ 放開定稿。若要修改，點擊文字缺口處，再次長按補唸即可插入。';
 
 // E1 專用 DOM
 const recitationPanel = document.getElementById('recitationPanel');
@@ -79,7 +85,10 @@ startBtn.onclick = startPractice;
 stopBtn.onclick = stopPractice;
 repeatBtn.onclick = handleRepeat;
 submitAnsBtn.onclick = handleSubmitAnswer;
-micBtn.onclick = handleMicToggle;
+micBtn.addEventListener('pointerdown', handleMicPointerDown);
+micBtn.addEventListener('pointerup', handleMicPointerUp);
+micBtn.addEventListener('pointercancel', handleMicPointerUp);
+micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 unitSelect.onchange = updateUnitPreview;
 
 // E1 事件綁定
@@ -189,7 +198,9 @@ function stopPractice(keepSpeaking = false) {
     micBtn.disabled = false;
     submitAnsBtn.disabled = false;
     repeatBtn.disabled = false;
-    micBtn.classList.remove('recording');
+    micBtn.classList.remove('recording', 'thinking');
+    hideError();
+    hideTutorReply();
 
     // 5. 清空與隱藏面板
     statementBox.style.display = 'none';
@@ -200,7 +211,7 @@ function stopPractice(keepSpeaking = false) {
     
     displayText.style.display = 'flex';
     displayText.innerText = "請選擇單元開始練習";
-    speechHint.innerText = "";
+    speechHint.innerText = DEFAULT_MIC_HINT;
     userAnswerInput.value = "";
 
     updateUnitPreview();
@@ -436,7 +447,9 @@ function startNewQuestion() {
     interactiveArea.style.display = 'none';
     reviewContent.innerHTML = "";
     userAnswerInput.value = "";
-    speechHint.innerText = "";
+    speechHint.innerText = DEFAULT_MIC_HINT;
+    hideError();
+    hideTutorReply();
 
     if (currentConfig.hasTreeDiagram) {
         treeDiagramArea.style.display = 'block';
@@ -474,7 +487,9 @@ function getSpeechQuestionText(index) {
 
 function askSubQuestion(readStatement) {
     userAnswerInput.value = "";
-    speechHint.innerText = "";
+    speechHint.innerText = DEFAULT_MIC_HINT;
+    hideError();
+    hideTutorReply();
     interactiveArea.style.display = 'none';
 
     if (currentConfig.showStatement) {
@@ -534,60 +549,187 @@ function handleRepeat() {
     });
 }
 
-/**
- * 💡 Gemini Live STT 麥克風開關控制函數
- * 動態抽取當前「題目內文」與「預期答案詞彙」，送給伺服器代理作為 Context 與 Vocabulary
- */
-function handleMicToggle() {
-    if (speechService.isListening) {
-        speechService.stopRecognition();
-    } else {
-        let currentContextText = "";
-        let expectedVocabList = [];
+function showError(message) {
+    if (!errorBox) return;
+    errorBox.innerText = message;
+    errorBox.style.display = 'block';
+}
 
-        if (currentQ) {
-            if (currentUnit === "E2") {
-                currentContextText = currentQ.statement;
+function hideError() {
+    if (!errorBox) return;
+    errorBox.innerText = '';
+    errorBox.style.display = 'none';
+}
+
+function showTutorReply(message) {
+    if (!tutorBox) return;
+    if (!message) {
+        hideTutorReply();
+        return;
+    }
+    tutorBox.innerText = `導師指導：${message}`;
+    tutorBox.style.display = 'block';
+}
+
+function hideTutorReply() {
+    if (!tutorBox) return;
+    tutorBox.innerText = '';
+    tutorBox.style.display = 'none';
+}
+
+function getCurrentDebateContext() {
+    if (!currentQ) return '';
+
+    // 1. 取得基本題目脈絡（論式 + 當前提問）
+    let context = currentUnit === 'E2' 
+        ? (currentQ.statement || '') 
+        : `${currentQ.statement || ''}，${getSpeechQuestionText(subQIndex)}`;
+
+    // 2. 動態提取當下階段 (subQIndex) 的預期標準答案
+    if (currentQ.answers) {
+        let expectedAnswers = [];
+
+        if (Array.isArray(currentQ.answers[0])) {
+            // 【多重路徑】
+            if (selectedPathIndex !== -1) {
+                // 已鎖定路線，只給該路線當下階段的答案
+                expectedAnswers.push(currentQ.answers[selectedPathIndex][subQIndex]);
             } else {
-                currentContextText = `${currentQ.statement}，${getSpeechQuestionText(subQIndex)}`;
+                // 尚未鎖定路線（通常是第一階），抓取所有路線的可能選項
+                expectedAnswers = currentQ.answers.map(path => path[subQIndex]);
             }
-
-            if (currentQ.answers) {
-                if (Array.isArray(currentQ.answers[0])) {
-                    // 多路徑答案 (如 H2、I2)
-                    currentQ.answers.forEach(path => {
-                        if (path[subQIndex]) expectedVocabList.push(path[subQIndex]);
-                    });
-                } else {
-                    // 單路徑答案
-                    if (currentQ.answers[subQIndex]) expectedVocabList.push(currentQ.answers[subQIndex]);
-                }
-            }
+        } else {
+            // 【單一路徑】包含不遍後面的直接與間接立宗
+            expectedAnswers.push(currentQ.answers[subQIndex]);
         }
 
-        speechService.startRecognition(
-            (cleanText) => {
-                const normalizedText = AnswerEvaluator.normalizeSTTText(cleanText);
-                userAnswerInput.value = normalizedText;
-                speechHint.innerText = `Gemini 辨識結果："${normalizedText}"`;
-            },
-            (errorMsg) => { speechHint.innerText = `⚠️ 語音辨識提醒：${errorMsg}`; },
-            (isListening) => {
-                if (isListening) {
-                    micBtn.classList.add('recording');
-                    speechHint.innerText = "🎙️ 連線 Gemini Live 中，請說出答案...";
-                } else {
-                    micBtn.classList.remove('recording');
-                }
-            },
-            currentContextText,
-            expectedVocabList
-        );
+        // 過濾空值並組合成提示字串
+        const validAnswers = expectedAnswers.filter(ans => ans).join(" 或 ");
+        if (validAnswers) {
+            // 讓 Gemini 知道這就是接下來極有可能聽到的發音
+            context += ` (預期使用者的回答可能是：「${validAnswers}」)`;
+        }
     }
+
+    return context;
+}
+
+function applyMicUiState(state) {
+    micBtn.classList.remove('recording', 'thinking');
+    if (state === 'recording') {
+        micBtn.classList.add('recording');
+        micBtn.disabled = false;
+        submitAnsBtn.disabled = true;
+        // 💡 加上清晰的操作口訣
+        speechHint.innerText = '🔴 【口訣：按住 ➔ 看到紅燈 ➔ 穩聲說話 ➔ 放開】錄音中...';
+        hideError();
+        hideTutorReply();
+    } else if (state === 'thinking') {
+        micBtn.classList.add('thinking');
+        micBtn.disabled = true;
+        submitAnsBtn.disabled = true;
+        userAnswerInput.disabled = true;
+        speechHint.innerText = '🧠 AI 思考中，正在解析您的語音…';
+    } else {
+        micBtn.disabled = isTreeDiagramOpen;
+        submitAnsBtn.disabled = isTreeDiagramOpen;
+        userAnswerInput.disabled = isTreeDiagramOpen;
+        const keepHint = speechHint.innerText.startsWith('辨識結果') || speechHint.innerText.startsWith('⚠️');
+        if (!keepHint) {
+            // 💡 在閒置狀態時也常態顯示口訣提示
+            speechHint.innerText = DEFAULT_MIC_HINT;
+        }
+    }
+}
+
+let micStartInFlight = false;
+let micReleasedDuringStart = false;
+
+// 💡 1. 修改：在按下按鈕時，綁定 WebSocket 的即時回傳事件 (onLiveResult)
+// 💡 2. 修改：改為「游標前綴/後綴擷取」與「防抖插入」邏輯
+async function handleMicPointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (!isPracticing || isTreeDiagramOpen || speechService.isListening || speechService.isThinking || micStartInFlight) return;
+    event.preventDefault();
+    try {
+        micBtn.setPointerCapture(event.pointerId);
+    } catch {
+        /* ignore */
+    }
+    micReleasedDuringStart = false;
+    micStartInFlight = true;
+
+    // 👉 1. 取得當前輸入框內的文字與游標位置
+    const currentText = userAnswerInput.value || "";
+    // 若沒有游標焦點，預設將游標視為在文字最末端
+    const cursorStart = userAnswerInput.selectionStart !== null ? userAnswerInput.selectionStart : currentText.length;
+    const cursorEnd = userAnswerInput.selectionEnd !== null ? userAnswerInput.selectionEnd : currentText.length;
+
+    // 👉 2. 將文字以游標為界線，切成「前半段」與「後半段」
+    // 如果使用者反白了一段錯字，這段邏輯會剛好把錯字過濾掉，替換為新的語音
+    prefixText = currentText.substring(0, cursorStart);
+    suffixText = currentText.substring(cursorEnd);
+
+    // 👉 3. 綁定 Live 模式即時傳回的文字（徹底拋棄複雜的 historyText 拼接）
+    speechService.onLiveResult = (transcript) => {
+        // 先進行同音字與專有名詞校正
+        const correctedText = AnswerEvaluator.normalizeSTTText(transcript);
+        if (!correctedText) return;
+
+        // 加入 250ms 防抖緩衝，避免 Gemini 思考中途的微調造成畫面閃爍
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            // 💡 直接組合：游標前文字 + 最新語音文字 + 游標後文字
+            const fullAnswer = prefixText + correctedText + suffixText;
+            
+            userAnswerInput.value = fullAnswer;
+            speechHint.innerText = `辨識結果：「${fullAnswer}」`;
+            
+            // 💡 UX 優化：將游標自動定位在剛輸入完的語音文字後方
+            const newCursorPos = prefixText.length + correctedText.length;
+            userAnswerInput.setSelectionRange(newCursorPos, newCursorPos);
+            userAnswerInput.focus();
+
+            hideError();
+        }, 250);
+    };
+
+    // 👉 傳入 context，讓 WebSocket 連線可以將題目脈絡帶給 Gemini 建立詞彙表
+    speechService.currentContext = getCurrentDebateContext();
+
+    const started = await speechService.startRecording(applyMicUiState, (errorMsg) => {
+        showError(errorMsg);
+        speechHint.innerText = `⚠️ ${errorMsg}`;
+        applyMicUiState('idle');
+    });
+    
+    micStartInFlight = false;
+    if (started && micReleasedDuringStart) {
+        await handleMicPointerUp(event);
+    }
+}
+
+// 💡 2. 修改：在放開按鈕時，加入 400ms 延遲保留短音，並簡化停止錄音的呼叫
+async function handleMicPointerUp(event) {
+    if (micStartInFlight) {
+        micReleasedDuringStart = true;
+        return;
+    }
+    if (!speechService.isListening) return;
+    event.preventDefault();
+
+    // 👉 刻意延遲 400 毫秒，確保「無」、「對」等極短音的尾音完整送出給 WebSocket 伺服器
+    await new Promise(resolve => setTimeout(resolve, 400));
+    
+    // 👉 不再傳入 onResult/onError 等複雜參數，僅處理狀態更新，關閉 WebSocket
+    await speechService.stopRecordingAndSend({
+        onStateChange: applyMicUiState
+    });
 }
 
 function handleSubmitAnswer() {
     speechService.stopRecognition();
+    applyMicUiState('idle');
     const val = userAnswerInput.value.trim();
     let std = "";
     let isCorrect = false;
