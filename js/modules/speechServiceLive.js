@@ -27,7 +27,7 @@ export class SpeechService {
 
             if (onStateChange) onStateChange('recording');
 
-            this.ws = new WebSocket('ws://localhost:3000');
+            this.ws = new WebSocket('wss://debate-practice-8h3m.onrender.com');
 
             this.ws.onopen = () => {
                 this.ws.send(JSON.stringify({ type: 'config', context: this.currentContext }));
