@@ -6,6 +6,20 @@ import { getQuestionList, getUnitConfig } from './data/questionBank.js';
 const speechService = new SpeechService();
 const scoreManager = new ScoreManager();
 
+// 💡 新增 1：網頁一載入就綁定狀態，並在背景提早喚醒伺服器
+speechService.onConnectionStateChange = (state) => {
+    if (state === 'connected') {
+        // 如果使用者剛剛按了麥克風正在等，就切換成連線成功提示
+        if (speechHint.innerText.includes('正在喚醒')) {
+            speechHint.innerText = "✅ 伺服器已連線，請按住麥克風開始說話！";
+            speechHint.style.color = "#27ae60"; // 轉為綠色
+            setTimeout(() => { speechHint.style.color = "#64748b"; }, 3500); // 3.5秒後恢復預設顏色
+        }
+    }
+};
+// 立即在背景發起連線，爭取冷啟動時間
+speechService.connect();
+
 let isPracticing = false;
 let currentUnit = "A";
 let currentConfig = null;
@@ -650,6 +664,16 @@ let micReleasedDuringStart = false;
 async function handleMicPointerDown(event) {
     if (event.button !== undefined && event.button !== 0) return;
     if (!isPracticing || isTreeDiagramOpen || speechService.isListening || speechService.isThinking || micStartInFlight) return;
+    
+    // 💡 新增 2：按下麥克風時，攔截未連線狀態並給予明確提示
+    if (!speechService.isConnected) {
+        speechHint.innerText = "⏳ 正在喚醒雲端語音伺服器 (約需 30-50 秒)，請稍候再按...";
+        speechHint.style.color = "#e67e22"; // 變成醒目的橘色
+        speechService.connect(); // 再次確保有觸發連線
+        return; // 直接中斷，不啟動錄音
+    }
+    speechHint.style.color = "#64748b"; // 確保顏色恢復正常
+    
     event.preventDefault();
     try {
         micBtn.setPointerCapture(event.pointerId);
