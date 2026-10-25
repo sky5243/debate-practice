@@ -828,45 +828,53 @@ function showReviewPanel() {
         const scoreResult = scoreManager.recordResult(true, currentConfig.isSequential);
         updateStatusDisplay();
 
-        renderReviewRows();
-        reviewPanel.style.display = 'block';
+        // 💡 修改 1：答對時，強制隱藏結算面板，不顯示回答細節
+        reviewPanel.style.display = 'none';
 
         if (currentConfig.isSequential) {
             sequentialIndex++;
             if (sequentialIndex >= currentQuestionList.length) {
-                reviewTitle.innerText = "🏆 恭喜您！成功順利完成本單元的所有練習題！";
                 speechService.speak("恭喜您成功通過本單元的所有練習", rateSelect.value, () => { stopPractice(); });
             } else {
-                reviewTitle.innerText = "🎉 本題完全答對！準備進入下一題...";
-                speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+                // 💡 TTS 唸完「太棒了，答對了」後，立刻直接觸發 startNewQuestion
+                speechService.speak("太棒了，答對了", rateSelect.value, startNewQuestion);
             }
         } else {
             if (scoreResult.isPassed) {
-                reviewTitle.innerText = "🏆 恭喜您！成功通過本單元的測試！";
                 speechService.speak("恭喜您通過本單元的測試，請重新選擇練習單元", rateSelect.value, () => { stopPractice(); });
             } else {
-                reviewTitle.innerText = "🎉 本題完全答對！進度 +1，準備進入下一題...";
-                speechService.speak("太棒了，答對了", rateSelect.value, () => setTimeout(startNewQuestion, 1500));
+                speechService.speak("太棒了，答對了", rateSelect.value, startNewQuestion);
             }
         }
     } else {
         const incResult = scoreManager.incrementAttempt(currentConfig.isSequential);
         updateStatusDisplay();
 
+        // 💡 修改 2：答錯時，顯示對照表，並加入手動確認按鈕，移除自動跳轉
         renderReviewRows();
         reviewPanel.style.display = 'block';
 
+        // 建立手動點擊的確認按鈕
+        const retryBtnHtml = `
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="manualRetryBtn" style="background-color: #3498db; color: white; border: none; padding: 12px 24px; font-size: 18px; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.2s;">
+                    👀 我看懂了，重新挑戰本題
+                </button>
+            </div>
+        `;
+
         if (incResult.justResetStreak) {
-            reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請繼續挑戰本題...";
-            speechService.speak("嘗試超過三次，連續次數歸零，請繼續挑戰本題", rateSelect.value, () => {
-                setTimeout(retryCurrentQuestion, 1500);
-            });
+            reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請仔細檢視錯誤：";
+            reviewContent.innerHTML += retryBtnHtml;
+            speechService.speak("嘗試超過三次，連續次數歸零，沒關係，請看畫面比對錯誤，再繼續挑戰唷！", rateSelect.value);
         } else {
-            reviewTitle.innerText = "❌ 答錯了，請繼續挑戰本題！";
-            speechService.speak("答錯了，請再試一次", rateSelect.value, () => {
-                setTimeout(retryCurrentQuestion, 1500);
-            });
+            reviewTitle.innerText = "❌ 答錯了，請仔細比對您的回答與標準答案：";
+            reviewContent.innerHTML += retryBtnHtml;
+            speechService.speak("答錯了，沒關係，請看畫面比對錯誤，再來一次！", rateSelect.value);
         }
+
+        // 綁定按鈕點擊事件，必須由練習者親自按下才會重新挑戰
+        document.getElementById('manualRetryBtn').addEventListener('click', retryCurrentQuestion);
     }
 }
 
