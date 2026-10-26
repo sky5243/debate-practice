@@ -5,8 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>辯論理路全題庫單元練習 (Gemini Live 版)</title>
+    <link rel="icon" href="data:,">
     <style>
-        /* 保留您原本完整的 CSS 樣式設定 */
+        /* 基礎樣式設定 */
         * { box-sizing: border-box; }
         body { 
             font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
@@ -25,6 +26,8 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
         }
         h1 { margin-top: 0; font-size: 26px; color: #1a252f; }
+        
+        /* 控制面板區 */
         .control-panel {
             display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
             gap: 10px; margin-bottom: 20px; background: #f8fafc; padding: 15px;
@@ -38,10 +41,15 @@
         }
         select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
         select:focus { border-color: #3498db; box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2); }
+        
+        /* 💡 統一管理的頂部控制按鈕 */
         #startBtn { background-color: #3498db; color: white; border: none; cursor: pointer; font-weight: bold; }
         #startBtn:hover { background-color: #2980b9; }
         #stopBtn { background-color: #e74c3c; color: white; border: none; cursor: pointer; font-weight: bold; }
         #stopBtn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
+        #restBtn { background-color: #10b981; color: white; border: none; cursor: pointer; font-weight: bold; }
+        #restBtn:hover { background-color: #059669; }
+        
         .status-panel { 
             display: flex; justify-content: space-around; background: #ecf0f1; 
             padding: 15px; border-radius: 10px; margin: 20px 0; font-weight: bold; font-size: 18px;
@@ -65,9 +73,25 @@
         }
         .interactive-area { display: none; margin: 20px 0; }
         .input-wrapper { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 580px; margin: 15px auto; }
-        #userAnswerInput { flex: 1; font-size: 18px; padding: 12px 16px; border: 2px solid #3498db; border-radius: 10px; outline: none; }
+        
+        /* 💡 輸入框樣式：固定四行高度，超過內部捲動，避免改變版面導致按鈕位移 */
+        #userAnswerInput { 
+            flex: 1; 
+            font-size: 18px; 
+            padding: 12px 16px; 
+            border: 2px solid #3498db; 
+            border-radius: 10px; 
+            outline: none; 
+            resize: none; 
+            width: 100%;
+            font-family: inherit; 
+            line-height: 1.5; 
+            overflow-y: auto;
+        }
         #userAnswerInput:focus { box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.25); }
         #userAnswerInput:disabled { background-color: #e2e8f0; border-color: #cbd5e1; cursor: not-allowed; }
+        
+        /* 💡 圓形圖示按鈕：維持垂直置中，不隨輸入框內容變化而移動 */
         .icon-btn {
             display: inline-flex; align-items: center; justify-content: center;
             width: 48px; height: 48px; border-radius: 10px; border: none; cursor: pointer;
@@ -85,6 +109,7 @@
         }
         .send-btn { background-color: #27ae60; color: white; }
         .send-btn:hover { background-color: #219150; }
+        
         .repeat-btn {
             background-color: #f39c12; color: white; border: none; padding: 10px 20px;
             font-weight: bold; cursor: pointer; border-radius: 8px; margin-bottom: 10px;
@@ -93,32 +118,10 @@
         .repeat-btn:disabled { background-color: #cbd5e1; cursor: not-allowed; }
         .speech-hint { font-size: 14px; color: #64748b; min-height: 20px; margin-top: 4px; }
         .error-box {
-            display: none;
-            margin: 10px auto 0 auto;
-            max-width: 580px;
-            padding: 12px 14px;
-            border-radius: 10px;
-            background: #fef2f2;
-            border: 1px solid #fecaca;
-            color: #b91c1c;
-            font-size: 14px;
-            font-weight: 600;
-            text-align: left;
-            line-height: 1.5;
-        }
-        .tutor-box {
-            display: none;
-            margin: 10px auto 0 auto;
-            max-width: 580px;
-            padding: 12px 14px;
-            border-radius: 10px;
-            background: #f5f3ff;
-            border: 1px solid #ddd6fe;
-            color: #5b21b6;
-            font-size: 14px;
-            text-align: left;
-            line-height: 1.6;
-        }
+            display: none; margin: 10px auto 0 auto; max-width: 580px; padding: 12px 14px;
+            border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca;
+            color: #b91c1c; font-size: 14px; font-weight: 600; text-align: left; line-height: 1.5;
+        }       
         .review-panel { 
             background: #fff8e1; border: 2px solid #ffb300; border-radius: 12px; 
             padding: 20px; margin: 20px 0; display: none; text-align: left; 
@@ -126,38 +129,22 @@
         .review-row { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed #ffe082; font-size: 15px; line-height: 1.5; }
 
         .recitation-panel {
-            display: none;
-            background: #fdfbf7;
-            border: 2px solid #5c3d2e;
-            border-radius: 12px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
+            display: none; background: #fdfbf7; border: 2px solid #5c3d2e;
+            border-radius: 12px; padding: 20px; margin: 20px 0; text-align: center;
         }
-        .tab-group {
-            display: flex; justify-content: center; gap: 10px; margin-bottom: 15px;
-        }
+        .tab-group { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
         .tab-btn {
             padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 8px;
-            border: 2px solid #5c3d2e; background: white; color: #5c3d2e; cursor: pointer;
-            transition: all 0.2s ease;
+            border: 2px solid #5c3d2e; background: white; color: #5c3d2e; cursor: pointer; transition: all 0.2s ease;
         }
-        .tab-btn.active {
-            background: #5c3d2e; color: white;
-        }
+        .tab-btn.active { background: #5c3d2e; color: white; }
         .text-display-card {
-            background: #ffffff; border: 2px solid #b89b7d; padding: 20px;
-            border-radius: 10px; font-size: 20px; line-height: 1.85;
-            font-weight: 600; color: #3e2723; text-align: left;
-            margin-bottom: 15px; white-space: pre-line;
-            box-shadow: 0 2px 8px rgba(92, 61, 46, 0.08);
+            background: #ffffff; border: 2px solid #b89b7d; padding: 20px; border-radius: 10px; 
+            font-size: 20px; line-height: 1.85; font-weight: 600; color: #3e2723; text-align: left;
+            margin-bottom: 15px; white-space: pre-line; box-shadow: 0 2px 8px rgba(92, 61, 46, 0.08);
         }
-        .rec-action-area {
-            background: white; padding: 15px; border-radius: 10px; border: 1px solid #d7ccc8; margin-top: 10px;
-        }
-        .record-timer {
-            font-size: 28px; font-weight: bold; color: #ef4444; margin: 10px 0;
-        }
+        .rec-action-area { background: white; padding: 15px; border-radius: 10px; border: 1px solid #d7ccc8; margin-top: 10px; }
+        .record-timer { font-size: 28px; font-weight: bold; color: #ef4444; margin: 10px 0; }
         .btn-success { background-color: #10b981; color: white; border: none; font-weight: bold; cursor: pointer; }
         .btn-success:hover { background-color: #059669; }
         .btn-danger { background-color: #ef4444; color: white; border: none; font-weight: bold; cursor: pointer; }
@@ -173,16 +160,13 @@
         }
         .tree-toggle-btn:hover { background-color: #7c3aed; }
         .tree-diagram-card {
-            display: none; background: #faf5ff; border: 2px solid #a855f7;
-            border-radius: 12px; padding: 15px; margin: 15px 0; text-align: left;
-            overflow-x: auto;
+            display: none; background: #faf5ff; border: 2px solid #a855f7; border-radius: 12px; 
+            padding: 15px; margin: 15px 0; text-align: left; overflow-x: auto;
         }
         .tree-table { width: 100%; border-collapse: collapse; font-size: 15px; }
         .tree-table td, .tree-table th { border: 1px solid #c084fc; padding: 8px 10px; text-align: center; }
         .tree-table th { background: #f3e8ff; color: #6b21a8; font-weight: bold; }
-        .tree-warning-banner {
-            color: #dc2626; font-weight: bold; font-size: 15px; text-align: center; margin-top: 8px;
-        }
+        .tree-warning-banner { color: #dc2626; font-weight: bold; font-size: 15px; text-align: center; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -225,8 +209,10 @@
                 </select>
             </div>
 
+            <!-- 💡 將修暫止息力按鈕與其他控制項並列 -->
             <button id="startBtn">開始練習</button>
             <button id="stopBtn" disabled>中斷練習 / 更換單元</button>
+            <button id="restBtn">修暫止息力</button>
         </div>
         
         <div class="status-panel">
@@ -279,7 +265,8 @@
             <button class="repeat-btn" id="repeatBtn">🔊 論式再說一遍</button>
             
             <div class="input-wrapper">
-                <input type="text" id="userAnswerInput" placeholder="輸入文字，或按住麥克風語音答題..." autocomplete="off">
+                <!-- 💡 預設固定 4 行高度的 textarea，超過時在框內捲動 -->
+                <textarea id="userAnswerInput" rows="4" placeholder="輸入文字，或按住麥克風語音答題..." autocomplete="off"></textarea>
                 <button type="button" class="icon-btn mic-btn" id="micBtn" title="按住錄音，放開後送出">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                 </button>
@@ -289,7 +276,6 @@
             </div>
             <div class="speech-hint" id="speechHint">按住麥克風錄音，放開後會送給 Gemini 辨識。</div>
             <div class="error-box" id="errorBox"></div>
-            <div class="tutor-box" id="tutorBox"></div>
         </div>
 
         <div class="recitation-panel" id="recitationPanel">

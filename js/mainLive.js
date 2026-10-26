@@ -6,7 +6,7 @@ import { getQuestionList, getUnitConfig } from './data/questionBank.js';
 const speechService = new SpeechService();
 const scoreManager = new ScoreManager();
 
-// 💡 新增 1：網頁一載入就綁定狀態，並在背景提早喚醒伺服器
+// 💡 修正：網頁一載入就綁定狀態，並在背景提早喚醒伺服器 (爭取 30~50 秒冷啟動時間)
 speechService.onConnectionStateChange = (state) => {
     if (state === 'connected') {
         // 如果使用者剛剛按了麥克風正在等，就切換成連線成功提示
@@ -17,7 +17,7 @@ speechService.onConnectionStateChange = (state) => {
         }
     }
 };
-// 立即在背景發起連線，爭取冷啟動時間
+// 立即在背景發起連線
 speechService.connect();
 
 let isPracticing = false;
@@ -49,6 +49,7 @@ let isTreeDiagramOpen = false;
 // DOM 元素引用
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
+const restBtn = document.getElementById('restBtn'); // 💡 綁定休眠按鈕 DOM
 const unitSelect = document.getElementById('unitSelect');
 const rateSelect = document.getElementById('rateSelect');
 const streakDisplay = document.getElementById('streakDisplay');
@@ -96,7 +97,16 @@ const closeTreeBtn = document.getElementById('closeTreeBtn');
 
 // 事件綁定
 startBtn.onclick = startPractice;
-stopBtn.onclick = stopPractice;
+stopBtn.onclick = () => stopPractice(false); // 明確傳入 false，不管怎樣都把語音卡死
+
+// 💡 修正：修暫止息力按鈕，僅清理狀態與硬體，絕對不切斷 WebSocket 連線
+// 💡 修正：加上 parseFloat 確保語音正常播放，並在 stopPractice 後方覆寫專屬提示文字
+restBtn.onclick = () => {
+    speechService.speak("好的，好好休息吧，方便時再來練習唷！", parseFloat(rateSelect.value));
+    stopPractice(true); 
+    displayText.innerText = "隨喜您的精進，期待您下次再來練習唷！";
+};
+
 repeatBtn.onclick = handleRepeat;
 submitAnsBtn.onclick = handleSubmitAnswer;
 micBtn.addEventListener('pointerdown', handleMicPointerDown);
@@ -118,8 +128,12 @@ addReadCountBtn.onclick = handleAddReadCount;
 treeToggleBtn.onclick = toggleTreeDiagram;
 closeTreeBtn.onclick = closeTreeDiagram;
 
+// 💡 避免在 textarea 中按下 Enter 換行，維持原有的送出行為
 userAnswerInput.onkeydown = (e) => { 
-    if (e.key === 'Enter') handleSubmitAnswer(); 
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSubmitAnswer();
+    }
 };
 
 // 確保頁面一載入就顯示正確的歷史累計次數
@@ -148,9 +162,9 @@ function startPractice() {
     isPracticing = true;
     currentUnit = unitSelect.value;
 
-    // 💡 趁使用者點擊「開始練習」按鈕時，取得瀏覽器授權，在背景偷偷預熱麥克風！
-    if (speechService && typeof speechService.preWarmMicrophone === 'function') {
-        speechService.preWarmMicrophone();
+    // 💡 保留優化：預先載入音訊處理模組，不開啟麥克風權限 (不發熱)，有效縮短點擊時的啟動延遲
+    if (speechService && typeof speechService.loadAudioProcessor === 'function') {
+        speechService.loadAudioProcessor();
     }
     
     currentConfig = getUnitConfig(currentUnit);
@@ -190,23 +204,27 @@ function updateStatusDisplay() {
 function stopPractice(keepSpeaking = false) {
     isPracticing = false;
     
-    // 1. 強制停止語音服務（除非特別指定 keepSpeaking 為 true）
+    // 1. 強制停止語音服務與麥克風資源
     if (speechService && !keepSpeaking) {
         speechService.stopSpeaking();
-        speechService.stopRecognition(true); // 💡 加上 true，徹底關閉麥克風
+        speechService.stopRecognition(); 
     } else if (speechService) {
-        // 即使保留朗讀，還是要停止語音辨識
-        speechService.stopRecognition(true); // 💡 加上 true，徹底關閉麥克風
+        // 即使保留朗讀，還是要停止語音辨識與麥克風
+        speechService.stopRecognition(); 
     }
 
-    // 2. 強制停止 E1 錄音與計時器
+    // 2. 強制停止 E1 錄音與釋放串流
     if (mediaRecorder && mediaRecorder.state === "recording") {
         mediaRecorder.stop();
         if (mediaRecorder.stream) {
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
         }
     }
-    clearInterval(recordTimerInterval);
+    // 💡 確實清除計時器防耗電
+    if (typeof recordTimerInterval !== 'undefined' && recordTimerInterval) { 
+        clearInterval(recordTimerInterval); 
+        recordTimerInterval = null; 
+    }
 
     // 3. 恢復控制面板與按鈕狀態
     startBtn.disabled = false;
@@ -220,7 +238,6 @@ function stopPractice(keepSpeaking = false) {
     repeatBtn.disabled = false;
     micBtn.classList.remove('recording', 'thinking');
     hideError();
-    hideTutorReply();
 
     // 5. 清空與隱藏面板
     statementBox.style.display = 'none';
@@ -230,7 +247,7 @@ function stopPractice(keepSpeaking = false) {
     closeTreeDiagram();
     
     displayText.style.display = 'flex';
-    displayText.innerText = "請選擇單元開始練習";
+    displayText.innerText = "請重新選擇新單元後，再按【開始練習】";
     speechHint.innerText = DEFAULT_MIC_HINT;
     userAnswerInput.value = "";
 
@@ -469,7 +486,6 @@ function startNewQuestion() {
     userAnswerInput.value = "";
     speechHint.innerText = DEFAULT_MIC_HINT;
     hideError();
-    hideTutorReply();
 
     if (currentConfig.hasTreeDiagram) {
         treeDiagramArea.style.display = 'block';
@@ -509,7 +525,6 @@ function askSubQuestion(readStatement) {
     userAnswerInput.value = "";
     speechHint.innerText = DEFAULT_MIC_HINT;
     hideError();
-    hideTutorReply();
     interactiveArea.style.display = 'none';
 
     if (currentConfig.showStatement) {
@@ -534,6 +549,7 @@ function askSubQuestion(readStatement) {
     }
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
+        if (!isPracticing) return; // 💡 防護機制：如果練習已經中斷，就立刻停止，不顯示作答區
         interactiveArea.style.display = 'block';
         userAnswerInput.value = "";
         if (!isTreeDiagramOpen) {
@@ -561,6 +577,7 @@ function handleRepeat() {
     }
 
     speechService.speak(textToSpeak, rateSelect.value, () => {
+        if (!isPracticing) return; // 💡 防護機制：同上
         interactiveArea.style.display = 'block';
         userAnswerInput.value = "";
         if (!isTreeDiagramOpen) {
@@ -579,22 +596,6 @@ function hideError() {
     if (!errorBox) return;
     errorBox.innerText = '';
     errorBox.style.display = 'none';
-}
-
-function showTutorReply(message) {
-    if (!tutorBox) return;
-    if (!message) {
-        hideTutorReply();
-        return;
-    }
-    tutorBox.innerText = `導師指導：${message}`;
-    tutorBox.style.display = 'block';
-}
-
-function hideTutorReply() {
-    if (!tutorBox) return;
-    tutorBox.innerText = '';
-    tutorBox.style.display = 'none';
 }
 
 function getCurrentDebateContext() {
@@ -642,8 +643,7 @@ function applyMicUiState(state) {
         submitAnsBtn.disabled = true;
         // 💡 加上清晰的操作口訣
         speechHint.innerText = '🔴 【口訣：按住 ➔ 看到紅燈 ➔ 穩聲說話 ➔ 放開】錄音中...';
-        hideError();
-        hideTutorReply();
+        hideError();        
     } else if (state === 'thinking') {
         micBtn.classList.add('thinking');
         micBtn.disabled = true;
@@ -665,13 +665,13 @@ function applyMicUiState(state) {
 let micStartInFlight = false;
 let micReleasedDuringStart = false;
 
-// 💡 1. 修改：在按下按鈕時，綁定 WebSocket 的即時回傳事件 (onLiveResult)
-// 💡 2. 修改：改為「游標前綴/後綴擷取」與「防抖插入」邏輯
+// 💡 修改：在按下按鈕時，綁定 WebSocket 的即時回傳事件 (onLiveResult)
+// 💡 修改：改為「游標前綴/後綴擷取」與「防抖插入」邏輯
 async function handleMicPointerDown(event) {
     if (event.button !== undefined && event.button !== 0) return;
     if (!isPracticing || isTreeDiagramOpen || speechService.isListening || speechService.isThinking || micStartInFlight) return;
     
-    // 💡 新增 2：按下麥克風時，攔截未連線狀態並給予明確提示
+    // 💡 按下麥克風時，攔截未連線狀態並給予明確提示
     if (!speechService.isConnected) {
         speechHint.innerText = "⏳ 正在喚醒雲端語音伺服器 (約需 30-50 秒)，請稍候再按...";
         speechHint.style.color = "#e67e22"; // 變成醒目的橘色
@@ -700,7 +700,7 @@ async function handleMicPointerDown(event) {
     prefixText = currentText.substring(0, cursorStart);
     suffixText = currentText.substring(cursorEnd);
 
-    // 👉 3. 綁定 Live 模式即時傳回的文字（徹底拋棄複雜的 historyText 拼接）
+    // 👉 3. 綁定 Live 模式即時傳回的文字
     speechService.onLiveResult = (transcript) => {
         // 先進行同音字與專有名詞校正
         const correctedText = AnswerEvaluator.normalizeSTTText(transcript);
@@ -713,7 +713,6 @@ async function handleMicPointerDown(event) {
             const fullAnswer = prefixText + correctedText + suffixText;
             
             userAnswerInput.value = fullAnswer;
-            speechHint.innerText = `辨識結果：「${fullAnswer}」`;
             
             // 💡 UX 優化：將游標自動定位在剛輸入完的語音文字後方
             const newCursorPos = prefixText.length + correctedText.length;
@@ -739,7 +738,7 @@ async function handleMicPointerDown(event) {
     }
 }
 
-// 💡 2. 修改：在放開按鈕時，加入 400ms 延遲保留短音，並簡化停止錄音的呼叫
+// 💡 修改：在放開按鈕時，加入 400ms 延遲保留短音，並徹底釋放錄音資源
 async function handleMicPointerUp(event) {
     if (micStartInFlight) {
         micReleasedDuringStart = true;
@@ -751,7 +750,7 @@ async function handleMicPointerUp(event) {
     // 👉 刻意延遲 400 毫秒，確保「無」、「對」等極短音的尾音完整送出給 WebSocket 伺服器
     await new Promise(resolve => setTimeout(resolve, 400));
     
-    // 👉 不再傳入 onResult/onError 等複雜參數，僅處理狀態更新，關閉 WebSocket
+    // 👉 停止錄音，但保留 WS 連線
     await speechService.stopRecordingAndSend({
         onStateChange: applyMicUiState
     });

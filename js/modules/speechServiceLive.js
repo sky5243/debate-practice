@@ -11,6 +11,7 @@ export class SpeechService {
         this.lastTranscript = "";
         this.historyText = "";
         this.lastRawText = "";
+        this.isProcessorLoaded = false; // 💡 新增：追蹤音訊模組是否已預載完成
         
         this.isConnected = false;
         this.onConnectionStateChange = null; 
@@ -61,6 +62,27 @@ export class SpeechService {
         }
     }
 
+    // 💡 新增：預載音訊處理模組 (在 mainLive.js 按下「開始練習」時呼叫)
+    // 這裡僅建立軟體引擎並下載 pcm-processor.js 模組，不開啟麥克風硬體，絕對不會發燙
+    async loadAudioProcessor() {
+        if (this.isProcessorLoaded && this.audioContext) return;
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            
+            // 💡 建立完成後立即強制暫停，確保背景 0 耗能運作
+            if (this.audioContext.state === 'running') {
+                await this.audioContext.suspend();
+            }
+            
+            await this.audioContext.audioWorklet.addModule('pcm-processor.js');
+            this.isProcessorLoaded = true;
+            console.log("音訊處理模組預載完成 (0耗電待命中)");
+        } catch (error) {
+            console.error("預載音訊模組失敗:", error);
+            this.isProcessorLoaded = false;
+        }
+    }
+
     // 每次按下麥克風時才動態取得硬體，用完立刻釋放，絕不發燙
     async startRecording(onStateChange, onError) {
         if (this.isListening) return false;
@@ -77,14 +99,20 @@ export class SpeechService {
             this.lastTranscript = "";
             this.isListening = true;
 
-            // 啟動麥克風硬體與音訊處理
+            // 💡 修改：判斷是否已經預載 AudioContext，若無（例如中斷練習後重新開始）則當下建立
+            if (!this.audioContext || !this.isProcessorLoaded) {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                await this.audioContext.audioWorklet.addModule('pcm-processor.js');
+                this.isProcessorLoaded = true;
+            }
+
+            // 💡 只有在真正按住按鈕的瞬間，才向系統呼叫麥克風硬體授權
             this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            
+            // 喚醒預載的音訊引擎 (必須在使用者點擊事件內執行)
             if (this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
             }
-
-            await this.audioContext.audioWorklet.addModule('pcm-processor.js');
 
             const source = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
@@ -138,12 +166,16 @@ export class SpeechService {
         }
         if (this.audioContext) {
             try {
+                // 💡 徹底銷毀音訊引擎，釋放記憶體與 CPU
                 this.audioContext.close();
             } catch (e) { /* ignore */ }
             this.audioContext = null;
+            // 💡 重置預載狀態，確保下次按下麥克風時會建立乾淨無錯誤的引擎
+            this.isProcessorLoaded = false; 
         }
         if (this.mediaStream) {
             try {
+                // 💡 徹底切斷麥克風硬體，手機狀態列燈號熄滅
                 this.mediaStream.getTracks().forEach(track => track.stop());
             } catch (e) { /* ignore */ }
             this.mediaStream = null;
