@@ -763,7 +763,7 @@ function handleSubmitAnswer() {
     let std = "";
     let isCorrect = false;
 
-    // --- 處理 H2 / I2 雙重路徑與舊單元單一路徑的動態判斷 ---
+    // --- 處理 H2 / I2 /J2 雙重路徑與舊單元單一路徑的動態判斷 ---
     if (currentQ.answers && Array.isArray(currentQ.answers[0])) {
         // 【二維陣列】多路徑模式
         if (subQIndex === 0) {

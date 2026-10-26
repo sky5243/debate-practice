@@ -16,6 +16,8 @@ import { unitH2 } from './unitH2.js';
 // 💡 1. 匯入單元 I1, I2
 import { unitI1 } from './unitI1.js';
 import { unitI2 } from './unitI2.js';
+import { unitJ1 } from './unitJ1.js';
+import { unitJ2 } from './unitJ2.js';
 
 export const unitConfigs = {
     "A": {
@@ -118,6 +120,19 @@ export const unitConfigs = {
         targetCount: 10, 
         isSequential: false, 
         showStatement: false 
+    },
+    // 💡 2. 新增單元 J1, J2 設定
+    "J1": { 
+        name: "【單元 J1】綜合回答——他聲", 
+        targetCount: 10, 
+        isSequential: false, 
+        showStatement: false 
+    },
+    "J2": { 
+        name: "【單元 J2】綜合回答——他聲（含因/周遍）", 
+        targetCount: 10, 
+        isSequential: false, 
+        showStatement: false 
     }
 };
 
@@ -139,7 +154,10 @@ export const questionBank = {
     "H2": unitH2,
     // 💡 3. 將 I1, I2 加入題庫對應表
     "I1": unitI1,
-    "I2": unitI2
+    "I2": unitI2,
+    // 💡 3. 將 J1, J2 加入題庫對應表
+    "J1": unitJ1,
+    "J2": unitJ2
 };
 
 export function getQuestionList(unitKey) {

@@ -120,6 +120,8 @@ export class SpeechService {
             this.workletNode.port.onmessage = (event) => {
                 if (!this.isListening) return;
                 if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    // 💡 下一行用來追蹤音訊封包是否有正常發送，當有卡頓不收音時再於電腦按F12檢查
+                    // console.log("正在發送音訊大小:", event.data.byteLength);
                     this.ws.send(event.data);
                 }
             };
