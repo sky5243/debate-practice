@@ -802,7 +802,7 @@ async function handleSubmitAnswer() {
 
             feedbackSource = aiResult.source === 'ai' ? 'ai' : 'local';
             if (currentTargetAnswer.evalGoal === 'example') {
-                std = feedbackSource === 'ai' ? '（表外事例，由 AI 判定）' : '（依法相表判定）';
+                std = feedbackSource === 'ai' ? '（表外事例：AI 歸類＋法相表規則判定）' : '（依法相表判定）';
             } else {
                 std = aiResult.expectedTheses
                     ? `${aiResult.expectedTheses}（順序不拘）`

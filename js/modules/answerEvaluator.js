@@ -1,4 +1,7 @@
-import { evaluateExampleWithKB } from '../data/sautrantikaKB.js';
+import { evaluateExampleWithKB, classificationFromCategory, KB_UNCLASSIFIABLE } from '../data/sautrantikaKB.js';
+
+// 表外名詞的 AI 歸類快取（同一次開啟網頁期間，同一名詞只問一次 AI，結果也保持一致）
+const aiCategoryCache = new Map();
 import { EVALUATE_URL } from './backendConfig.js';
 
 const AI_FETCH_TIMEOUT_MS = 15000;
@@ -282,8 +285,57 @@ export class AnswerEvaluator {
                 };
             }
 
-            // 💡 規則 3：若不在基本法相表中，轉由後端 AI 進行經部宗深度判定
-            console.log(`🤖 [調用後端 AI 判定表外事例]: ${rawNoun}`);
+            // 💡 規則 3：表外名詞 → 請 AI 只做「歸類」，再用同一套本地法相表規則判定對錯
+            let cached = aiCategoryCache.get(rawNoun);
+            if (!cached) {
+                console.log(`🤖 [調用後端 AI 歸類表外事例]: ${rawNoun}`);
+                notifyAiCall();
+                const clsRes = await postToEvaluator({ noun: rawNoun, evalGoal: "classify" });
+                if (clsRes.ok && clsRes.data && clsRes.data.category) {
+                    cached = { category: clsRes.data.category, reason: clsRes.data.reason || "" };
+                    aiCategoryCache.set(rawNoun, cached);
+                } else if (isQuotaExceeded(clsRes)) {
+                    return { isCorrect: false, retryable: true, extractedExample: "", source: "ai", feedback: AI_QUOTA_MESSAGE };
+                } else {
+                    return {
+                        isCorrect: false,
+                        extractedExample: rawNoun,
+                        source: "ai",
+                        feedback: `事例「${rawNoun}」未在標準法相表中，且${describeAiFailure(clsRes)}。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
+                    };
+                }
+            } else {
+                console.log(`📦 [使用快取的 AI 歸類]: ${rawNoun} → ${cached.category}`);
+            }
+
+            const reasonText = cached.reason ? `（${cached.reason}）` : "";
+
+            if (cached.category === KB_UNCLASSIFIABLE) {
+                // 無法明確歸類：不判對錯，停在本題讓使用者改舉其他事例
+                return {
+                    isCorrect: false,
+                    retryable: true,
+                    extractedExample: "",
+                    source: "ai",
+                    feedback: `「${rawNoun}」無法明確歸入法相表的類別${reasonText}，建議改舉其他事例。`
+                };
+            }
+
+            const aiClassification = classificationFromCategory(rawNoun, cached.category);
+            const ruleResult = aiClassification
+                ? evaluateExampleWithKB(rawNoun, logicParams, logicParams.subject, aiClassification)
+                : { matched: false };
+            if (ruleResult.matched) {
+                return {
+                    isCorrect: ruleResult.isCorrect,
+                    extractedExample: rawNoun,
+                    source: "ai",
+                    feedback: `AI 歸類：${rawNoun} → ${cached.category}${reasonText}；依法相表規則判定：${ruleResult.feedback}`
+                };
+            }
+
+            // 備援：本題沒有對應的本地規則時，才改用逐一查核命題的方式請 AI 判定
+            console.log(`🤖 [本題無本地規則，改請 AI 查核命題]: ${rawNoun}`);
             notifyAiCall();
             const aiRes = await postToEvaluator({
                 noun: rawNoun,

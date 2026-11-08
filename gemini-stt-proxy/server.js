@@ -13,6 +13,67 @@ const port = process.env.PORT || 3000;
 const STT_MODEL = process.env.GEMINI_STT_MODEL || 'gemini-3.5-transcribe-live';
 const EVAL_MODEL = process.env.GEMINI_EVAL_MODEL || 'gemini-3.5-flash-lite';
 
+const CLASSIFY_OPTIONS = ["無", "常法", "色法", "心識", "心不相應行法", "無法明確歸類"];
+
+// 呼叫 Gemini 並解析 JSON 回傳；失敗時丟出帶 status 的錯誤（429 等狀態碼會原樣傳回前端）
+async function callGeminiJson(apiKey, systemInstruction, prompt, responseSchema = null) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${EVAL_MODEL}:generateContent?key=${apiKey}`;
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+                responseMimeType: "application/json",
+                temperature: 0.1,
+                ...(responseSchema ? { responseSchema } : {})
+            }
+        })
+    });
+    if (!response.ok) {
+        const errText = await response.text();
+        console.error(`Gemini API Error (model=${EVAL_MODEL}, HTTP ${response.status}):`, errText);
+        const err = new Error(`Gemini API 調用失敗 (model=${EVAL_MODEL}, HTTP ${response.status})`);
+        err.status = response.status;
+        throw err;
+    }
+    const data = await response.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
+    if (!text) {
+        console.error('Gemini 無有效回傳:', JSON.stringify(data).slice(0, 1000));
+        throw new Error('Gemini 無有效回傳');
+    }
+    try {
+        return parseModelJson(text);
+    } catch {
+        console.error('Gemini 回傳 JSON 解析失敗，原始內容:', text);
+        throw new Error('Gemini 回傳格式錯誤');
+    }
+}
+
+// 把模型回傳的類別文字對應到六個選項之一（容忍「色法：物質…」這類照抄整行的回答）
+function normalizeCategory(raw) {
+    if (typeof raw !== 'string') return null;
+    const text = raw.trim();
+    if (CLASSIFY_OPTIONS.includes(text)) return text;
+    const head = text.split(/[：:（(s]/)[0].trim();
+    if (CLASSIFY_OPTIONS.includes(head)) return head;
+    // 由長到短比對開頭，避免「無法明確歸類」被誤判成「無」
+    const byLength = [...CLASSIFY_OPTIONS].sort((a, b) => b.length - a.length);
+    return byLength.find(opt => text.startsWith(opt)) || null;
+}
+
+const CLASSIFY_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+        category: { type: "STRING", enum: CLASSIFY_OPTIONS },
+        reason: { type: "STRING" }
+    },
+    required: ["category", "reason"]
+};
+
 // 解析模型回傳的 JSON：容忍 ```json ... ``` 包裝或前後多餘文字
 function parseModelJson(text) {
     let cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
@@ -51,8 +112,38 @@ app.post('/api/evaluate-debate', async (req, res) => {
    - 色法（物質）：瓶子、柱子、桌子、聲音、顏色、形狀、形色、顯色、香、味、觸等一切粗細物質。
    - 心識（覺知/明了）：現量、比量、分別心、遍智、無分別心、慈心、貪心等。
    - 心不相應行法：補特伽羅、時間、生滅等。
+   - 上位總名本身：無常、實事、所作、有為法皆歸為心不相應行法（既非色法亦非心識）。
 5. 無（非所知、兔子角等）不是法、不是常法、不是無常，但是無我。
-6. 「是A的話不遍是B」意思是：存在某個法是A但不是B。「是A的話遍是B」意思是：凡是A都是B。`;
+6. 【相違原則】常法與無常直接相違，凡是有必定是二者之一，沒有第三種可能；
+   色法、心識、心不相應行法三者互相相違，凡是無常必定是其中之一，且只能是其中之一（例如色法絕不是心不相應行法）。
+7. 「是A的話不遍是B」意思是：存在某個法是A但不是B。「是A的話遍是B」意思是：凡是A都是B。`;
+
+        // 💡 歸類模式：AI 只回答名詞屬於哪一類，對錯由前端本地法相表規則決定
+        if (evalGoal === "classify") {
+            if (!noun) return res.status(400).json({ error: '缺少 noun' });
+            const prompt = `請依經部宗法相，判斷「${noun}」屬於下列哪一類，只能選一項：
+- 無：不存在的非所知（如兔子角）
+- 常法：存在但非所作的常法（如虛空、所知）
+- 色法：物質（如瓶子、聲音）
+- 心識：覺知、明了（如遍智、慈心）
+- 心不相應行法：既非色法亦非心識的無常（如補特伽羅、時間）
+- 無法明確歸類：名詞意義模糊、由兩個以上的法合成、範圍跨越多類，或不是一個明確的名詞
+
+以純 JSON 回傳，格式如下：
+{"category": "只填類別名稱，例如「色法」", "reason": "一句簡短理由"}`;
+            try {
+                const result = await callGeminiJson(apiKey, systemInstruction, prompt, CLASSIFY_SCHEMA);
+                const category = normalizeCategory(result.category);
+                if (!category) {
+                    console.error('Gemini 歸類結果不在選項內:', result);
+                    return res.status(502).json({ error: 'Gemini 歸類結果無效' });
+                }
+                console.log(`🤖 [AI 歸類] ${noun} → ${category}（${result.reason || ''}）`);
+                return res.json({ category, reason: result.reason || '' });
+            } catch (e) {
+                return res.status(e.status || 502).json({ error: e.message });
+            }
+        }
 
         let prompt = "";
         let exampleProps = []; // 舉例判定時，要逐一查核的命題

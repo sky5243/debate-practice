@@ -42,9 +42,42 @@ export const KB_ENTITIES = {
     // 【無常 - 心不相應行法】
     nonAssociated: [
         "補特伽羅", "時間", "佛聖者", "人", "有情", "士夫", "眾生",
-        "生", "住", "異", "滅", "得", "命根", "凡夫", "異生"
+        "生", "住", "異", "滅", "得", "命根", "凡夫", "異生",
+        // 上位總名本身（既非色法亦非心識）
+        "無常", "實事", "所作", "有為法"
     ]
 };
+
+// AI 歸類可回傳的類別（前五類互相相違；第六項表示無法明確歸類）
+export const KB_CATEGORIES = ["無", "常法", "色法", "心識", "心不相應行法"];
+export const KB_UNCLASSIFIABLE = "無法明確歸類";
+
+/**
+ * 依類別名稱建立與 getNounClassification 相同格式的屬性物件（供 AI 歸類結果套用本地規則）
+ * @param {string} name 名詞
+ * @param {string} category KB_CATEGORIES 其中之一
+ * @returns {object|null}
+ */
+export function classificationFromCategory(name, category) {
+    const base = {
+        name, isExistent: true, isNone: false, isPermanent: false, isImpermanent: false,
+        isForm: false, isConsciousness: false, isNonAssociated: false
+    };
+    switch (category) {
+        case "無":
+            return { ...base, isExistent: false, isNone: true, category: "無", subCategory: "非所知" };
+        case "常法":
+            return { ...base, isPermanent: true, category: "常法", subCategory: "無為法/共相" };
+        case "色法":
+            return { ...base, isImpermanent: true, isForm: true, category: "無常", subCategory: "色法" };
+        case "心識":
+            return { ...base, isImpermanent: true, isConsciousness: true, category: "無常", subCategory: "心識" };
+        case "心不相應行法":
+            return { ...base, isImpermanent: true, isNonAssociated: true, category: "無常", subCategory: "心不相應行法" };
+        default:
+            return null;
+    }
+}
 
 /**
  * 查詢名詞的法相屬性
@@ -158,10 +191,11 @@ export function getNounClassification(rawNoun) {
  * @param {string} noun 純事例名詞 (例如 "瓶子" 或 "形狀")
  * @param {object} logicParams 題目的邏輯條件
  * @param {string} subject 所諍事 (避免舉出與所諍事完全相同的事例)
+ * @param {object|null} classificationOverride 表外名詞經 AI 歸類後的屬性物件（由 classificationFromCategory 產生）
  * @returns {object} { matched: boolean, isCorrect: boolean, feedback: string }
  */
-export function evaluateExampleWithKB(noun, logicParams, subject = "") {
-    const classification = getNounClassification(noun);
+export function evaluateExampleWithKB(noun, logicParams, subject = "", classificationOverride = null) {
+    const classification = classificationOverride || getNounClassification(noun);
     if (!classification) {
         // 未在法相表中，交由 AI 二次判定
         return { matched: false };
