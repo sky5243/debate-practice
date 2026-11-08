@@ -150,6 +150,11 @@ export class AnswerEvaluator {
         rawVal = this.convertToTraditional(rawVal);
         rawStd = this.convertToTraditional(rawStd);
 
+        // 💡 同義答案：「因不成」與「因不成立」視為相同（雙方統一成「因不成立」再比對）
+        const unifySynonyms = (str) => str.replace(/因不成(?!立)/g, "因不成立");
+        rawVal = unifySynonyms(rawVal);
+        rawStd = unifySynonyms(rawStd);
+
         // 終極字串淨化函式（清除所有空格與標點符號）
         const stripSymbols = (str) => {
             if (!str) return "";

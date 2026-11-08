@@ -26,6 +26,27 @@ let currentQ = null;
 let subQIndex = 0;
 let selectedPathIndex = -1; 
 let lastQuestionIndex = -1;
+let questionDeck = []; // 不重複出題用的洗牌題序（尚未出過的題目索引）
+
+// 過關題數 ≥ 題目數的隨機單元（如 D1、D2、K1、K2）：每題都要問到，不重複出題
+function usesNoRepeatDeck() {
+    return !!currentConfig && !currentConfig.isSequential &&
+           currentQuestionList.length > 0 &&
+           scoreManager.streakThreshold >= currentQuestionList.length;
+}
+
+// 產生洗牌後的題目索引（Fisher-Yates），可排除指定索引
+function shuffledIndices(excludeIndex) {
+    const arr = [];
+    for (let i = 0; i < currentQuestionList.length; i++) {
+        if (i !== excludeIndex) arr.push(i);
+    }
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
 let userSessionRecords = [];
 let prefixText = ""; 
 let suffixText = ""; 
@@ -154,8 +175,10 @@ function startPractice() {
     currentQuestionList = getQuestionList(currentUnit);
     
     sequentialIndex = 0;
+    questionDeck = [];
+    lastQuestionIndex = -1;
     const targetTotal = currentConfig.targetCount || (currentConfig.isSequential ? currentQuestionList.length : 10);
-    
+
     scoreManager.resetSession(targetTotal);
     startBtn.disabled = true;
     stopBtn.disabled = false;
@@ -440,6 +463,18 @@ function startNewQuestion() {
 
     if (currentConfig.isSequential) {
         currentQ = currentQuestionList[sequentialIndex];
+    } else if (usesNoRepeatDeck()) {
+        // 💡 過關題數 ≥ 題目數的單元：隨機順序但不重複，抽完一輪才重新洗牌
+        if (questionDeck.length === 0) {
+            questionDeck = shuffledIndices(-1);
+            // 新一輪的第一題避免和上一題相同
+            if (questionDeck.length > 1 && questionDeck[0] === lastQuestionIndex) {
+                [questionDeck[0], questionDeck[1]] = [questionDeck[1], questionDeck[0]];
+            }
+        }
+        const newIndex = questionDeck.shift();
+        lastQuestionIndex = newIndex;
+        currentQ = currentQuestionList[newIndex];
     } else {
         let newIndex;
         do {
@@ -862,6 +897,11 @@ function showReviewPanel() {
                 </button>
             </div>
         `;
+
+        if (incResult.justResetStreak && usesNoRepeatDeck()) {
+            // 連續次數歸零：本題答對後算新一輪的第 1 題，其餘題目重新洗牌，確保接下來連續答對的題數涵蓋全部題目
+            questionDeck = shuffledIndices(lastQuestionIndex);
+        }
 
         if (incResult.justResetStreak) {
             reviewTitle.innerText = "⚠️ 本題嘗試超過 3 次，連續通過次數歸零！請仔細檢視錯誤：";
