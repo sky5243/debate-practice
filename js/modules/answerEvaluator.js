@@ -38,6 +38,13 @@ async function postToEvaluator(payload) {
     }
 }
 
+const AI_QUOTA_MESSAGE = "AI 使用量暫時達上限，請稍候約一分鐘再送出";
+
+// 429：使用量達上限，屬於「稍後重送即可」的情況
+function isQuotaExceeded(result) {
+    return !result.ok && result.reason === "http" && result.status === 429;
+}
+
 // 依失敗原因產生給使用者看的說明
 function describeAiFailure(result) {
     if (result.reason === "timeout") {
@@ -279,6 +286,10 @@ export class AnswerEvaluator {
                 };
             }
 
+            if (isQuotaExceeded(aiRes)) {
+                return { isCorrect: false, retryable: true, extractedExample: "", feedback: AI_QUOTA_MESSAGE };
+            }
+
             return {
                 isCorrect: false,
                 extractedExample: rawNoun,
@@ -328,6 +339,10 @@ export class AnswerEvaluator {
                     expectedTheses,
                     feedback: data.feedback || (data.isCorrect ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」`)
                 };
+            }
+
+            if (isQuotaExceeded(aiRes)) {
+                return { isCorrect: false, retryable: true, expectedTheses, feedback: AI_QUOTA_MESSAGE };
             }
 
             return {

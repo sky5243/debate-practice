@@ -724,14 +724,8 @@ async function handleSubmitAnswer() {
     let isCorrect = false;
     let aiFeedback = "";
 
+    // 💡 空白答案視同「無法安立」（使用者的便利操作），不擋送出，交由判定邏輯處理
     const currentTargetAnswer = currentQ.answers[subQIndex];
-    const canBeEmpty = (currentTargetAnswer === "") ||
-                       (Array.isArray(currentQ.answers[0]) && currentQ.answers[selectedPathIndex !== -1 ? selectedPathIndex : 0]?.[subQIndex] === "");
-
-    if (!val && !canBeEmpty) {
-        showError("請輸入答案！");
-        return;
-    }
 
     isSubmitting = true;
     let usedThinkingUi = false;
@@ -747,6 +741,13 @@ async function handleSubmitAnswer() {
                 currentTargetAnswer.evalGoal,
                 currentExtractedExample
             );
+
+            if (aiResult.retryable) {
+                // AI 使用量暫時達上限：不記錄對錯、停留在本題，讓使用者稍後再送出
+                showError(aiResult.feedback);
+                speechHint.innerText = `⚠️ ${aiResult.feedback}`;
+                return;
+            }
 
             isCorrect = aiResult.isCorrect;
             aiFeedback = aiResult.feedback || "";
