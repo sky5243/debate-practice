@@ -779,9 +779,7 @@ async function handleSubmitAnswer() {
                 {
                     // 只有真的要詢問後端 AI 時，才把提示改成 AI 字樣
                     onAiCall: () => {
-                        speechHint.innerText = currentTargetAnswer.evalGoal === 'example'
-                            ? '🤖 法相表中沒有此例，正在詢問 AI…'
-                            : '🤖 立宗與標準不完全相同，正在請 AI 複核語意…';
+                        speechHint.innerText = '🤖 法相表中沒有此例，正在詢問 AI（最多 3 秒）…';
                     }
                 }
             );

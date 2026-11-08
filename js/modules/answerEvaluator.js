@@ -1,18 +1,47 @@
 import { evaluateExampleWithKB, classificationFromCategory, KB_UNCLASSIFIABLE } from '../data/sautrantikaKB.js';
-
-// 表外名詞的 AI 歸類快取（同一次開啟網頁期間，同一名詞只問一次 AI，結果也保持一致）
-const aiCategoryCache = new Map();
 import { EVALUATE_URL } from './backendConfig.js';
 
-const AI_FETCH_TIMEOUT_MS = 15000;
+// 使用者等待 AI 的上限：超過就提示 AI 忙碌（不計為答錯），但背景繼續等候並記下結果
+const AI_WAIT_MS = 3000;
+// 背景請求的最長保留時間（避免連線永遠掛著）
+const AI_BACKGROUND_TIMEOUT_MS = 60000;
+
+const AI_QUOTA_MESSAGE = "AI 使用量暫時達上限，請稍候約一分鐘再送出";
+const AI_BUSY_MESSAGE = "AI 目前忙碌，建議改舉法相表上的例子，再試一次";
+const AI_OFFLINE_MESSAGE = "暫時無法連線到 AI 服務，建議改舉法相表上的例子，再試一次";
+
+// ===== 表外名詞的 AI 歸類快取：記憶體 + 瀏覽器 localStorage（同一台裝置永久記住）=====
+const CATEGORY_STORAGE_KEY = "aiCategoryCache_v1";
+const aiCategoryCache = new Map();
+const pendingClassify = new Map(); // 進行中的歸類請求（逾時後仍在背景等候）
+
+function loadCategoryCache() {
+    try {
+        if (typeof localStorage === "undefined") return;
+        const saved = JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY) || "{}");
+        for (const [noun, value] of Object.entries(saved)) {
+            if (value && typeof value.category === "string") aiCategoryCache.set(noun, value);
+        }
+    } catch { /* 無法讀取時只用記憶體快取 */ }
+}
+
+function saveCategory(noun, value) {
+    aiCategoryCache.set(noun, value);
+    try {
+        if (typeof localStorage === "undefined") return;
+        localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(Object.fromEntries(aiCategoryCache)));
+    } catch { /* 儲存失敗不影響判定 */ }
+}
+
+loadCategoryCache();
 
 /**
  * 呼叫後端 AI 評估端點（含逾時）
  * @returns {Promise<{ok: true, data: object} | {ok: false, reason: "timeout"|"http"|"network", status?: number, detail?: string}>}
  */
-async function postToEvaluator(payload) {
+async function postToEvaluator(payload, timeoutMs = AI_BACKGROUND_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), AI_FETCH_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const response = await fetch(EVALUATE_URL, {
             method: "POST",
@@ -31,7 +60,7 @@ async function postToEvaluator(payload) {
         return { ok: true, data };
     } catch (e) {
         if (e.name === "AbortError") {
-            console.error(`⏱️ [AI 評估逾時] 超過 ${AI_FETCH_TIMEOUT_MS / 1000} 秒未回應:`, EVALUATE_URL);
+            console.error(`⏱️ [AI 評估逾時] 超過 ${timeoutMs / 1000} 秒未回應:`, EVALUATE_URL);
             return { ok: false, reason: "timeout" };
         }
         console.error("❌ [AI 評估連線失敗]:", e);
@@ -41,22 +70,59 @@ async function postToEvaluator(payload) {
     }
 }
 
-const AI_QUOTA_MESSAGE = "AI 使用量暫時達上限，請稍候約一分鐘再送出";
+/**
+ * 取得表外名詞的 AI 歸類：先查快取；沒有就送出請求，最多讓使用者等 AI_WAIT_MS。
+ * 逾時後請求仍在背景進行，回來的結果會存入快取，使用者「再試一次」時即可立即判定。
+ * @returns {Promise<{ok: true, value: {category, reason}} | {ok: false, reason: "busy"|"quota"|"offline"}>}
+ */
+async function getAiCategory(noun, onAiCall) {
+    const cached = aiCategoryCache.get(noun);
+    if (cached) {
+        console.log(`📦 [使用快取的 AI 歸類]: ${noun} → ${cached.category}`);
+        return { ok: true, value: cached };
+    }
+
+    let request = pendingClassify.get(noun);
+    if (!request) {
+        console.log(`🤖 [調用後端 AI 歸類表外事例]: ${noun}`);
+        if (onAiCall) onAiCall();
+        request = postToEvaluator({ noun, evalGoal: "classify" }).then((res) => {
+            if (res.ok && res.data && typeof res.data.category === "string") {
+                const value = { category: res.data.category, reason: res.data.reason || "" };
+                saveCategory(noun, value);
+                console.log(`💾 [AI 歸類已記住]: ${noun} → ${value.category}`);
+                return { ok: true, value };
+            }
+            if (isQuotaExceeded(res)) return { ok: false, reason: "quota" };
+            return { ok: false, reason: res.reason === "timeout" ? "busy" : "offline" };
+        }).finally(() => pendingClassify.delete(noun));
+        pendingClassify.set(noun, request);
+    } else {
+        console.log(`⏳ [歸類請求仍在背景進行]: ${noun}`);
+        if (onAiCall) onAiCall();
+    }
+
+    let timer = null;
+    const waitLimit = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ ok: false, reason: "busy" }), AI_WAIT_MS);
+    });
+    try {
+        return await Promise.race([request, waitLimit]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 // 429：使用量達上限，屬於「稍後重送即可」的情況
 function isQuotaExceeded(result) {
     return !result.ok && result.reason === "http" && result.status === 429;
 }
 
-// 依失敗原因產生給使用者看的說明
-function describeAiFailure(result) {
-    if (result.reason === "timeout") {
-        return `雲端 AI 超過 ${AI_FETCH_TIMEOUT_MS / 1000} 秒未回應（伺服器可能正在喚醒）`;
-    }
-    if (result.reason === "http") {
-        return `雲端 AI 服務回傳錯誤（HTTP ${result.status}）`;
-    }
-    return "無法連線到雲端 AI 服務";
+// AI 無法及時判定時，給使用者的「不計為答錯」訊息
+function aiUnavailableMessage(reason) {
+    if (reason === "quota") return AI_QUOTA_MESSAGE;
+    if (reason === "offline") return AI_OFFLINE_MESSAGE;
+    return AI_BUSY_MESSAGE;
 }
 
 export class AnswerEvaluator {
@@ -286,28 +352,18 @@ export class AnswerEvaluator {
             }
 
             // 💡 規則 3：表外名詞 → 請 AI 只做「歸類」，再用同一套本地法相表規則判定對錯
-            let cached = aiCategoryCache.get(rawNoun);
-            if (!cached) {
-                console.log(`🤖 [調用後端 AI 歸類表外事例]: ${rawNoun}`);
-                notifyAiCall();
-                const clsRes = await postToEvaluator({ noun: rawNoun, evalGoal: "classify" });
-                if (clsRes.ok && clsRes.data && clsRes.data.category) {
-                    cached = { category: clsRes.data.category, reason: clsRes.data.reason || "" };
-                    aiCategoryCache.set(rawNoun, cached);
-                } else if (isQuotaExceeded(clsRes)) {
-                    return { isCorrect: false, retryable: true, extractedExample: "", source: "ai", feedback: AI_QUOTA_MESSAGE };
-                } else {
-                    return {
-                        isCorrect: false,
-                        extractedExample: rawNoun,
-                        source: "ai",
-                        feedback: `事例「${rawNoun}」未在標準法相表中，且${describeAiFailure(clsRes)}。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
-                    };
-                }
-            } else {
-                console.log(`📦 [使用快取的 AI 歸類]: ${rawNoun} → ${cached.category}`);
+            //    最多等 3 秒；逾時 / 連線失敗 / 使用量上限皆「不計為答錯」，停在本題讓使用者再試一次
+            const cls = await getAiCategory(rawNoun, notifyAiCall);
+            if (!cls.ok) {
+                return {
+                    isCorrect: false,
+                    retryable: true,
+                    extractedExample: "",
+                    source: "ai",
+                    feedback: aiUnavailableMessage(cls.reason)
+                };
             }
-
+            const cached = cls.value;
             const reasonText = cached.reason ? `（${cached.reason}）` : "";
 
             if (cached.category === KB_UNCLASSIFIABLE) {
@@ -334,15 +390,10 @@ export class AnswerEvaluator {
                 };
             }
 
-            // 備援：本題沒有對應的本地規則時，才改用逐一查核命題的方式請 AI 判定
+            // 備援：本題沒有對應的本地規則時（目前 K1、K2 無此情況），才請 AI 逐一查核命題，同樣最多等 3 秒
             console.log(`🤖 [本題無本地規則，改請 AI 查核命題]: ${rawNoun}`);
             notifyAiCall();
-            const aiRes = await postToEvaluator({
-                noun: rawNoun,
-                logicParams,
-                evalGoal: "example"
-            });
-
+            const aiRes = await postToEvaluator({ noun: rawNoun, logicParams, evalGoal: "example" }, AI_WAIT_MS);
             if (aiRes.ok) {
                 const data = aiRes.data;
                 return {
@@ -352,20 +403,16 @@ export class AnswerEvaluator {
                     feedback: data.feedback || (data.isCorrect ? "AI 判定正確！" : "AI 判定不符合要求。")
                 };
             }
-
-            if (isQuotaExceeded(aiRes)) {
-                return { isCorrect: false, retryable: true, extractedExample: "", source: "ai", feedback: AI_QUOTA_MESSAGE };
-            }
-
             return {
                 isCorrect: false,
-                extractedExample: rawNoun,
+                retryable: true,
+                extractedExample: "",
                 source: "ai",
-                feedback: `事例「${rawNoun}」未在標準法相表中，且${describeAiFailure(aiRes)}。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
+                feedback: aiUnavailableMessage(isQuotaExceeded(aiRes) ? "quota" : (aiRes.reason === "timeout" ? "busy" : "offline"))
             };
         } 
         else if (evalGoal === "thesis") {
-            // 建立標準立宗模板，將 {E} 替換為剛才使用者舉的例子
+            // 建立標準立宗：將 {E} 替換為 Q2 使用者舉的例子
             let templates = [];
             if (logicParams.thesisTemplate) {
                 templates = logicParams.thesisTemplate.map(t => t.replace(/\{E\}/g, previousExample));
@@ -378,49 +425,13 @@ export class AnswerEvaluator {
 
             const expectedTheses = templates.join("；");
 
-            // 💡 優先以本地升級版多立宗無序比對演算法進行比對（只要全部立宗都有講出即過關）
+            // 💡 Q3 只用本地比對：把例子正確套入全部立宗即算對（順序不拘），不再呼叫 AI
             const isMatch = this.checkAnswer(cleanUserAns, expectedTheses);
-            if (isMatch) {
-                return {
-                    isCorrect: true,
-                    expectedTheses,
-                    source: "local",
-                    feedback: "立宗正確！"
-                };
-            }
-
-            // 若本地字串未匹配，向後端 AI 尋求語意同義確認
-            console.log(`🤖 [調用後端 AI 判定立宗語意]: ${cleanUserAns}`);
-            notifyAiCall();
-            const aiRes = await postToEvaluator({
-                evalGoal: "thesis",
-                previousExample,
-                userAns: cleanUserAns,
-                logicParams: {
-                    ...logicParams,
-                    thesisTemplate: templates
-                }
-            });
-
-            if (aiRes.ok) {
-                const data = aiRes.data;
-                return {
-                    isCorrect: !!data.isCorrect,
-                    expectedTheses,
-                    source: "ai",
-                    feedback: data.feedback || (data.isCorrect ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」`)
-                };
-            }
-
-            if (isQuotaExceeded(aiRes)) {
-                return { isCorrect: false, retryable: true, expectedTheses, source: "ai", feedback: AI_QUOTA_MESSAGE };
-            }
-
             return {
-                isCorrect: false,
+                isCorrect: isMatch,
                 expectedTheses,
-                source: "ai",
-                feedback: `立宗不符，標準立宗應為：「${expectedTheses}」（${describeAiFailure(aiRes)}，未能進行語意複核）`
+                source: "local",
+                feedback: isMatch ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」（順序不拘）`
             };
         }
 
