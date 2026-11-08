@@ -647,7 +647,7 @@ async function handleMicPointerDown(event) {
 }
 
 async function handleMicPointerUp(event) {
-    if (micStartInFlight) {
+        if (micStartInFlight) {
         micReleasedDuringStart = true;
         return;
     }
@@ -661,24 +661,17 @@ async function handleMicPointerUp(event) {
 async function handleSubmitAnswer() {
     speechService.stopRecognition();
     const val = userAnswerInput.value.trim();
-
+    
     let std = "";
     let isCorrect = false;
     let aiFeedback = "";
 
     const currentTargetAnswer = currentQ.answers[subQIndex];
-    const canBeEmpty = (currentTargetAnswer === "") || 
-                       (Array.isArray(currentQ.answers[0]) && currentQ.answers[selectedPathIndex !== -1 ? selectedPathIndex : 0]?.[subQIndex] === "");
-
-    if (!val && !canBeEmpty) {
-        showError("請輸入答案！");
-        return;
-    }
 
     if (currentTargetAnswer && currentTargetAnswer.type === "ai_eval") {
         applyMicUiState('thinking');
         
-        // 呼叫 AnswerEvaluator (本地法相表優先，生僻詞調用後端代理 AI)
+        // 呼叫 AnswerEvaluator (前端已無金鑰)
         const aiResult = await AnswerEvaluator.evaluateWithAI(
             val, 
             currentQ.logicParams, 
@@ -689,15 +682,11 @@ async function handleSubmitAnswer() {
         isCorrect = aiResult.isCorrect;
         aiFeedback = aiResult.feedback || "";
         
-        if (currentTargetAnswer.evalGoal === "example") {
-            if (aiResult.isCorrect && aiResult.extractedExample) {
-                currentExtractedExample = aiResult.extractedExample;
-            }
-            std = "【合法的「某某有法」事例】";
-        } else if (currentTargetAnswer.evalGoal === "thesis") {
-            std = aiResult.expectedTheses || "【依舉例代入的兩個立宗】";
+        if (currentTargetAnswer.evalGoal === "example" && aiResult.extractedExample) {
+            currentExtractedExample = aiResult.extractedExample;
         }
 
+        std = `(AI動態判定: ${currentTargetAnswer.evalGoal === 'example' ? '舉例' : '立宗'})`;
         applyMicUiState('idle');
         
     } else {

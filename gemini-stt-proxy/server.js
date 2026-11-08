@@ -9,7 +9,7 @@ app.use(express.json());
 
 const port = process.env.PORT || 3000;
 
-app.get('/', (req, res) => res.send('Gemini STT Proxy is running! (v2.0 Live WebSocket + Sautrantika Evaluator)'));
+app.get('/', (req, res) => res.send('Gemini STT Proxy is running! (v3.5 Live WebSocket + Sautrantika Evaluator)'));
 
 // 💡 新增：依據經部宗法相之 AI 評估端點（當本地法相表未涵蓋該生僻名詞時備援使用）
 app.post('/api/evaluate-debate', async (req, res) => {
@@ -20,7 +20,7 @@ app.post('/api/evaluate-debate', async (req, res) => {
 
     try {
         const { noun, logicParams = {}, evalGoal, previousExample = "", userAns = "" } = req.body;
-        const modelVersion = process.env.GEMINI_MODEL_VERSION || 'gemini-2.0-flash';
+        const modelVersion = process.env.GEMINI_EVAL_MODEL || 'gemini-3.5-flash-lite';
         
         const systemInstruction = `你是一位精通藏傳佛教格魯派賽倉攝類學與經部宗宗義的嚴格因明裁判。
 依據經部宗法相體系判定學生的回答：
@@ -29,7 +29,7 @@ app.post('/api/evaluate-debate', async (req, res) => {
 3. 有分為常法（無實事/能作用空）與無常（實事/所作/自相/有為/勝義諦）。
    【特別注意常法例外】：有、所知、法、成實、無實事、補特伽羅無我、法無我、常法本身皆為常法！任何法的反體、非反、是反皆為常法！
 4. 無常（實事/所作）三分：
-   - 色法（物質）：瓶子、柱子、聲音、顏色、香、味、觸等。
+   - 色法（物質）：瓶子、柱子、聲音、顏色、形狀、形色、顯色、香、味、觸等。
    - 心識（覺知/明了）：現量、比量、分別心、遍智、無分別心等。
    - 心不相應行法：補特伽羅、時間、生滅等。
 5. 無（非所知、兔子角等）不是法、不是常法、不是無常，但符合無我。`;
@@ -92,7 +92,7 @@ app.post('/api/evaluate-debate', async (req, res) => {
 });
 
 const server = app.listen(port, () => {
-    console.log(`🚀 攝類學 STT Proxy 伺服器已啟動於 port ${port} (v2.0 WebSocket 模式 + API 端點)`);
+    console.log(`🚀 攝類學 STT Proxy 伺服器已啟動於 port ${port} (v3.5 WebSocket 模式 + API 端點)`);
 });
 
 const wss = new WebSocketServer({ server });
@@ -122,8 +122,16 @@ wss.on('connection', (ws) => {
                         console.log('✅ [3/3] 成功連線！送出強制繁中與辯論專用詞彙設定...');
                         
                         // 動態解析前端傳來的題目脈絡詞彙，提升辨識率
-                        const contextWords = data.context ? data.context.split(/[，。、\s]+/).filter(w => w.length >= 2) : [];
-                        const vocabArray = ["無", "有", "對", "錯", "承許", "何以故", "不遍", "因不成立", "常法", "遍", "所作", ...contextWords].slice(0, 90);
+                        const contextWords = data.context ? data.context.split(/[，。、\s：（）\(\)「」"]+/).filter(w => w.length >= 2) : [];
+                        const defaultBaseVocab = [
+                            "無", "有", "對", "錯", "承許", "何以故", "不遍", "因不成立", "因不成", "無法安立",
+                            "常法", "無常", "遍", "所作", "實事", "自相", "共相", "有為", "無為", "勝義諦", "世俗諦",
+                            "色法", "物質", "形狀", "形色", "顏色", "心識", "覺知", "明了", "心不相應行法",
+                            "補特伽羅", "遍智", "分別心", "現量", "比量", "瓶子", "柱子", "聲音", "虛空", "兔子角", "龜毛",
+                            "有法", "所知", "成實", "非所作", "無實事", "反體", "非反", "是反", "無我"
+                        ];
+                        // 優先放入題目語境詞彙，再補上核心辯論常備詞彙，去重並限制前 90 個
+                        const vocabArray = Array.from(new Set([...contextWords, ...defaultBaseVocab])).slice(0, 90);
 
                         const setupMsg = {
                             setup: {

@@ -55,8 +55,8 @@ export class AnswerEvaluator {
             { pattern: /[所鎖][先前銓現線顯]法/g, replace: "所顯法" },
             { pattern: /[成程誠陳呈]許/g, replace: "承許" },
 
-            // 補特伽羅
-            { pattern: /[補普不]特?[伽迦茄家加]羅/g, replace: "補特伽羅" },
+            // 補特伽羅 (全方位近音字攔截)
+            { pattern: /[補普不布步部][特得德][伽迦茄家加甲][羅落螺了樂]|普特伽羅|布特伽羅|不特伽羅|補特加羅|不得加羅|不得加了|不得家了|不特家了/g, replace: "補特伽羅" },
             { pattern: /心不相應[刑形型]法/g, replace: "心不相應行法" },
 
             // 格式與關係用語
@@ -68,6 +68,7 @@ export class AnswerEvaluator {
             { pattern: /因[不步][成誠承]/g, replace: "因不成" },
 
             // 舉例名詞
+            { pattern: /形[狀狀壯]|型[狀狀壯]/g, replace: "形狀" },
             { pattern: /[雙生聲深]音|聲陰/g, replace: "聲音" },
             { pattern: /[平坪屏]子|瓶自/g, replace: "瓶子" },
             { pattern: /[朱住祝]子|住址/g, replace: "柱子" },
@@ -188,9 +189,10 @@ export class AnswerEvaluator {
     static async evaluateWithAI(userAns, logicParams, evalGoal, previousExample = "") {
         const cleanUserAns = this.normalizeSTTText(this.convertToTraditional(userAns));
         const BACKEND_URL = "https://debate-practice-8h3m.onrender.com/api/evaluate-debate";
+        // const BACKEND_URL = "http://localhost:3000/api/evaluate-debate"; // 本地測試用
 
         if (evalGoal === "example") {
-            // 💡 規則 1：必須依格式回答「某某有法」（例如：「瓶子有法」）
+            // 💡 規則 1：必須依格式回答「某某有法」（例如：「瓶子有法」、「形狀有法」）
             const match = cleanUserAns.match(/^(.+?)\s*(?:有法)$/);
             if (!match) {
                 return {
@@ -240,7 +242,7 @@ export class AnswerEvaluator {
             return {
                 isCorrect: false,
                 extractedExample: rawNoun,
-                feedback: `事例「${rawNoun}」未在標準法相表中，建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、遍智、虛空等）！`
+                feedback: `事例「${rawNoun}」未在標準法相表中，且雲端 AI 服務連線未回應。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
             };
         } 
         else if (evalGoal === "thesis") {

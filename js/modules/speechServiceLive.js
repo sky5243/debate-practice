@@ -24,8 +24,9 @@ export class SpeechService {
         }
 
         try {
+            // this.ws = new WebSocket('ws://localhost:3000'); //本地端server測試用
             this.ws = new WebSocket('wss://debate-practice-8h3m.onrender.com');
-
+            
             this.ws.onopen = () => {
                 console.log("WebSocket 連線成功");
                 this.isConnected = true;
@@ -85,6 +86,8 @@ export class SpeechService {
 
     // 每次按下麥克風時才動態取得硬體，用完立刻釋放，絕不發燙
     async startRecording(onStateChange, onError) {
+        console.log("▶️ 1. 啟動錄音！目前 WebSocket 狀態:", this.ws ? this.ws.readyState : "未建立");
+        console.log("▶️ 2. 音訊模組是否準備就緒:", this.isProcessorLoaded);
         if (this.isListening) return false;
 
         if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {

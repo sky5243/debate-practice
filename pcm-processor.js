@@ -11,7 +11,7 @@ class PCMProcessor extends AudioWorkletProcessor {
             }
             
             // 將轉換好的 16kHz PCM 送回主線程
-            this.port.postMessage(pcm16.buffer, [pcm16.buffer]);
+            this.port.postMessage(pcm16.buffer, [pcm16.buffer]);            
         }
         return true;
     }
