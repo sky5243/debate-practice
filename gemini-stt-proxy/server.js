@@ -48,23 +48,44 @@ app.post('/api/evaluate-debate', async (req, res) => {
 3. 有分為常法（無實事/能作用空）與無常（實事/所作/自相/有為/勝義諦）。
    【特別注意常法例外】：有、所知、法、成實、無實事、補特伽羅無我、法無我、常法本身皆為常法！任何法的反體、非反、是反皆為常法！
 4. 無常（實事/所作）三分：
-   - 色法（物質）：瓶子、柱子、聲音、顏色、形狀、形色、顯色、香、味、觸等。
-   - 心識（覺知/明了）：現量、比量、分別心、遍智、無分別心等。
+   - 色法（物質）：瓶子、柱子、桌子、聲音、顏色、形狀、形色、顯色、香、味、觸等一切粗細物質。
+   - 心識（覺知/明了）：現量、比量、分別心、遍智、無分別心、慈心、貪心等。
    - 心不相應行法：補特伽羅、時間、生滅等。
-5. 無（非所知、兔子角等）不是法、不是常法、不是無常，但符合無我。`;
+5. 無（非所知、兔子角等）不是法、不是常法、不是無常，但是無我。
+6. 「是A的話不遍是B」意思是：存在某個法是A但不是B。「是A的話遍是B」意思是：凡是A都是B。`;
 
         let prompt = "";
+        let exampleProps = []; // 舉例判定時，要逐一查核的命題
         if (evalGoal === "example") {
-            prompt = `請判斷學生舉出的不遍事例「${noun}」是否符合下列因明邏輯要求：
-- 宗法(P): ${logicParams.P || '無'}
-- 因(R): ${logicParams.R || '無'}
-- 規則: ${logicParams.exampleRule || logicParams.type || '符合是因且非宗法'}
-- 原論式所諍事: ${logicParams.subject || '無'} (若事例與所諍事相同則不合適)
+            // 💡 新版舉例判定：把例子代入立宗模板（含 {E} 者），請模型逐一查核命題是否成立
+            const subject = (logicParams.subject || "").trim();
+            if (subject && noun === subject) {
+                return res.json({
+                    isCorrect: false,
+                    feedback: `請盡量不要舉和原論式所諍事（${subject}）一樣的例子，請嘗試舉其他事例！`
+                });
+            }
 
-請嚴格依照經部宗法相判定，以純 JSON 回傳，格式如下：
+            const templates = Array.isArray(logicParams.thesisTemplate) ? logicParams.thesisTemplate : [];
+            exampleProps = templates.filter(t => t.includes('{E}')).map(t => t.replace(/\{E\}/g, noun));
+            if (exampleProps.length === 0) {
+                if (logicParams.R && logicParams.P) {
+                    // 無模板時的備援：例子須「是因」且「不是宗法」
+                    exampleProps = [`${noun}${logicParams.R}`, `「${noun}${logicParams.P}」這句話不成立`];
+                } else {
+                    // 無效有法（any_valid）等：只要是存在的法即可
+                    exampleProps = [`${noun}是有（是存在的法）`];
+                }
+            }
+
+            prompt = `學生舉出的例子是「${noun}」。
+請依經部宗法相，逐一判斷下列命題是否成立：
+${exampleProps.map((p, i) => `${i + 1}. ${p}`).join('\n')}
+
+以純 JSON 回傳，格式如下：
 {
-  "isCorrect": true或false,
-  "feedback": "若正確給予肯定簡述；若錯誤給予簡短一句因明辨析說明"
+  "checks": [{"proposition": "命題", "holds": true或false}],
+  "feedback": "一句簡短的因明辨析說明"
 }`;
         } else {
             prompt = `請判斷學生針對事例「${previousExample}」所立的宗：「${userAns}」是否正確。
@@ -111,6 +132,16 @@ app.post('/api/evaluate-debate', async (req, res) => {
         } catch (parseErr) {
             console.error('Gemini 回傳 JSON 解析失敗，原始內容:', text);
             return res.status(502).json({ error: 'Gemini 回傳格式錯誤' });
+        }
+
+        if (evalGoal === "example") {
+            // 💡 是否答對由程式決定：每個命題都成立才算對（不採用模型自行給的總結論）
+            const checks = Array.isArray(result.checks) ? result.checks : [];
+            if (checks.length !== exampleProps.length) {
+                console.error('Gemini 查核結果數量不符:', exampleProps, result);
+                return res.status(502).json({ error: 'Gemini 查核結果不完整' });
+            }
+            result.isCorrect = checks.every(c => c && c.holds === true);
         }
         console.log(`🤖 [AI 判定] goal=${evalGoal} noun=${noun || ''} userAns=${userAns || ''} →`, result);
         return res.json(result);
