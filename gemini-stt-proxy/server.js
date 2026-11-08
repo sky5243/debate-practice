@@ -9,6 +9,25 @@ app.use(express.json());
 
 const port = process.env.PORT || 3000;
 
+// 💡 兩個模型皆由環境變數設定：語音轉文字 (STT) 與 舉例/立宗判定 (EVAL)
+const STT_MODEL = process.env.GEMINI_STT_MODEL || 'gemini-3.5-transcribe-live';
+const EVAL_MODEL = process.env.GEMINI_EVAL_MODEL || 'gemini-3.5-flash-lite';
+
+// 解析模型回傳的 JSON：容忍 ```json ... ``` 包裝或前後多餘文字
+function parseModelJson(text) {
+    let cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    try {
+        return JSON.parse(cleaned);
+    } catch {
+        const first = cleaned.indexOf('{');
+        const last = cleaned.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+            return JSON.parse(cleaned.slice(first, last + 1));
+        }
+        throw new Error('模型回傳內容不是有效 JSON');
+    }
+}
+
 app.get('/', (req, res) => res.send('Gemini STT Proxy is running! (v3.5 Live WebSocket + Sautrantika Evaluator)'));
 
 // 💡 新增：依據經部宗法相之 AI 評估端點（當本地法相表未涵蓋該生僻名詞時備援使用）
@@ -20,7 +39,7 @@ app.post('/api/evaluate-debate', async (req, res) => {
 
     try {
         const { noun, logicParams = {}, evalGoal, previousExample = "", userAns = "" } = req.body;
-        const modelVersion = process.env.GEMINI_EVAL_MODEL || 'gemini-3.5-flash-lite';
+        const modelVersion = EVAL_MODEL;
         
         const systemInstruction = `你是一位精通藏傳佛教格魯派賽倉攝類學與經部宗宗義的嚴格因明裁判。
 依據經部宗法相體系判定學生的回答：
@@ -73,17 +92,27 @@ app.post('/api/evaluate-debate', async (req, res) => {
 
         if (!response.ok) {
             const errText = await response.text();
-            console.error('Gemini API Error:', errText);
-            return res.status(response.status).json({ error: 'Gemini API 調用失敗' });
+            console.error(`Gemini API Error (model=${modelVersion}, HTTP ${response.status}):`, errText);
+            return res.status(response.status).json({ error: `Gemini API 調用失敗 (model=${modelVersion}, HTTP ${response.status})` });
         }
 
         const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        // 取第一個非「思考」的文字段落（避免模型開啟思考時 parts[0] 不是答案）
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const text = parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
         if (!text) {
-            return res.status(500).json({ error: 'Gemini 無有效回傳' });
+            console.error('Gemini 無有效回傳:', JSON.stringify(data).slice(0, 1000));
+            return res.status(502).json({ error: 'Gemini 無有效回傳' });
         }
 
-        const result = JSON.parse(text);
+        let result;
+        try {
+            result = parseModelJson(text);
+        } catch (parseErr) {
+            console.error('Gemini 回傳 JSON 解析失敗，原始內容:', text);
+            return res.status(502).json({ error: 'Gemini 回傳格式錯誤' });
+        }
+        console.log(`🤖 [AI 判定] goal=${evalGoal} noun=${noun || ''} userAns=${userAns || ''} →`, result);
         return res.json(result);
     } catch (err) {
         console.error('評估端點異常:', err);
@@ -93,6 +122,8 @@ app.post('/api/evaluate-debate', async (req, res) => {
 
 const server = app.listen(port, () => {
     console.log(`🚀 攝類學 STT Proxy 伺服器已啟動於 port ${port} (v3.5 WebSocket 模式 + API 端點)`);
+    console.log(`🎙️ 語音轉文字模型 (GEMINI_STT_MODEL): ${STT_MODEL}`);
+    console.log(`🧠 舉例/立宗判定模型 (GEMINI_EVAL_MODEL): ${EVAL_MODEL}`);
 });
 
 const wss = new WebSocketServer({ server });
@@ -135,7 +166,7 @@ wss.on('connection', (ws) => {
 
                         const setupMsg = {
                             setup: {
-                                model: "models/gemini-3.5-transcribe-live",
+                                model: `models/${STT_MODEL}`,
                                 generationConfig: {
                                     responseModalities: ["TEXT"]
                                 },

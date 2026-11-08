@@ -100,8 +100,7 @@ restBtn.onclick = () => {
 repeatBtn.onclick = handleRepeat;
 submitAnsBtn.onclick = handleSubmitAnswer; // 內部已改為 async
 micBtn.addEventListener('pointerdown', handleMicPointerDown);
-micBtn.addEventListener('pointerup', handleMicPointerUp);
-micBtn.addEventListener('pointercancel', handleMicPointerUp);
+// 💡 放開事件改由 handleMicPointerDown 在每次按壓時掛到 window（捕獲階段）與 lostpointercapture，避免事件遺失
 micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 unitSelect.onchange = updateUnitPreview;
 
@@ -593,22 +592,44 @@ function applyMicUiState(state) {
     }
 }
 
-let micStartInFlight = false;
-let micReleasedDuringStart = false;
+let micStartInFlight = false;       // 正在啟動錄音（等待麥克風授權 / 音訊引擎）
+let micReleasedDuringStart = false; // 啟動期間使用者已經放開
+let micPressActive = false;         // 本次按壓尚未處理「放開」
+let micStopInProgress = false;      // 正在停止錄音（避免重複停止）
+let activePointerId = null;
+let isSubmitting = false;           // 正在送出 / 判定答案（避免重複送出）
+
+function attachMicReleaseListeners() {
+    // 掛在 window 的捕獲階段：就算指標移出按鈕、或其他元素攔截事件，也一定收得到放開
+    window.addEventListener('pointerup', handleMicRelease, true);
+    window.addEventListener('pointercancel', handleMicRelease, true);
+    micBtn.addEventListener('lostpointercapture', handleMicRelease);
+}
+
+function detachMicReleaseListeners() {
+    window.removeEventListener('pointerup', handleMicRelease, true);
+    window.removeEventListener('pointercancel', handleMicRelease, true);
+    micBtn.removeEventListener('lostpointercapture', handleMicRelease);
+}
 
 async function handleMicPointerDown(event) {
     if (event.button !== undefined && event.button !== 0) return;
-    if (!isPracticing || isTreeDiagramOpen || speechService.isListening || speechService.isThinking || micStartInFlight) return;
+    if (!isPracticing || isTreeDiagramOpen || isSubmitting) return;
+    if (speechService.isListening || micStartInFlight || micStopInProgress || micPressActive) return;
     if (!speechService.isConnected) {
         speechHint.innerText = "⏳ 正在喚醒雲端語音伺服器 (約需 30-50 秒)，請稍候再按...";
-        speechHint.style.color = "#e67e22"; 
-        speechService.connect(); 
-        return; 
+        speechHint.style.color = "#e67e22";
+        speechService.connect();
+        return;
     }
-    speechHint.style.color = "#64748b"; 
+    speechHint.style.color = "#64748b";
     event.preventDefault();
+
+    micPressActive = true;
+    activePointerId = event.pointerId;
+    attachMicReleaseListeners();
     try { micBtn.setPointerCapture(event.pointerId); } catch { /* ignore */ }
-    
+
     micReleasedDuringStart = false;
     micStartInFlight = true;
 
@@ -634,88 +655,143 @@ async function handleMicPointerDown(event) {
 
     speechService.currentContext = getCurrentDebateContext();
 
-    const started = await speechService.startRecording(applyMicUiState, (errorMsg) => {
-        showError(errorMsg);
-        speechHint.innerText = `⚠️ ${errorMsg}`;
-        applyMicUiState('idle');
-    });
-    
-    micStartInFlight = false;
-    if (started && micReleasedDuringStart) {
-        await handleMicPointerUp(event);
+    let started = false;
+    try {
+        started = await speechService.startRecording(applyMicUiState, (errorMsg) => {
+            showError(errorMsg);
+            speechHint.innerText = `⚠️ ${errorMsg}`;
+            applyMicUiState('idle');
+        });
+    } finally {
+        micStartInFlight = false;
+    }
+
+    if (!started) {
+        // 啟動失敗或被取消：清掉本次按壓狀態，下次可正常再按
+        micPressActive = false;
+        activePointerId = null;
+        detachMicReleaseListeners();
+        return;
+    }
+    if (micReleasedDuringStart) {
+        await stopMicRecording();
     }
 }
 
-async function handleMicPointerUp(event) {
-        if (micStartInFlight) {
+function handleMicRelease(event) {
+    if (!micPressActive) return;
+    if (activePointerId !== null && event.pointerId !== undefined && event.pointerId !== activePointerId) return;
+
+    micPressActive = false;
+    activePointerId = null;
+    detachMicReleaseListeners();
+    try { micBtn.releasePointerCapture(event.pointerId); } catch { /* ignore */ }
+
+    if (micStartInFlight) {
+        // 麥克風還在啟動中：記下已放開，啟動完成後立刻停止
         micReleasedDuringStart = true;
         return;
     }
-    if (!speechService.isListening) return;
-    event.preventDefault();
-    await new Promise(resolve => setTimeout(resolve, 400));
-    await speechService.stopRecordingAndSend({ onStateChange: applyMicUiState });
+    stopMicRecording();
 }
 
-// 💡 核心修正：非同步送出答案，並呼叫 AnswerEvaluator 處理 AI 邏輯
+// 停止錄音（重複呼叫也只會執行一次）；放開只定稿，不自動送出
+async function stopMicRecording() {
+    if (micStopInProgress || !speechService.isListening) return;
+    micStopInProgress = true;
+    try {
+        // 刻意延遲 400 毫秒，確保「無」、「對」等極短音的尾音完整送出給伺服器
+        await new Promise(resolve => setTimeout(resolve, 400));
+        await speechService.stopRecordingAndSend({ onStateChange: applyMicUiState });
+    } catch (e) {
+        console.error('停止錄音時發生錯誤:', e);
+        speechService.stopRecognition();
+        applyMicUiState('idle');
+    } finally {
+        micStopInProgress = false;
+    }
+}
+
+// 💡 非同步送出答案，並呼叫 AnswerEvaluator 處理 AI 邏輯
+// 防重複送出、空白檢查，並以 try/finally 保證介面一定會回到可操作狀態
 async function handleSubmitAnswer() {
+    if (isSubmitting || !isPracticing || !currentQ) return;
+
     speechService.stopRecognition();
     const val = userAnswerInput.value.trim();
-    
+
     let std = "";
     let isCorrect = false;
     let aiFeedback = "";
 
     const currentTargetAnswer = currentQ.answers[subQIndex];
+    const canBeEmpty = (currentTargetAnswer === "") ||
+                       (Array.isArray(currentQ.answers[0]) && currentQ.answers[selectedPathIndex !== -1 ? selectedPathIndex : 0]?.[subQIndex] === "");
 
-    if (currentTargetAnswer && currentTargetAnswer.type === "ai_eval") {
-        applyMicUiState('thinking');
-        
-        // 呼叫 AnswerEvaluator (前端已無金鑰)
-        const aiResult = await AnswerEvaluator.evaluateWithAI(
-            val, 
-            currentQ.logicParams, 
-            currentTargetAnswer.evalGoal, 
-            currentExtractedExample
-        );
+    if (!val && !canBeEmpty) {
+        showError("請輸入答案！");
+        return;
+    }
 
-        isCorrect = aiResult.isCorrect;
-        aiFeedback = aiResult.feedback || "";
-        
-        if (currentTargetAnswer.evalGoal === "example" && aiResult.extractedExample) {
-            currentExtractedExample = aiResult.extractedExample;
-        }
+    isSubmitting = true;
+    let usedThinkingUi = false;
+    try {
+        if (currentTargetAnswer && currentTargetAnswer.type === "ai_eval") {
+            applyMicUiState('thinking');
+            usedThinkingUi = true;
 
-        std = `(AI動態判定: ${currentTargetAnswer.evalGoal === 'example' ? '舉例' : '立宗'})`;
-        applyMicUiState('idle');
-        
-    } else {
-        if (currentQ.answers && Array.isArray(currentQ.answers[0]) && typeof currentQ.answers[0] !== 'object') {
-            if (subQIndex === 0) {
-                let matched = false;
-                for (let i = 0; i < currentQ.answers.length; i++) {
-                    const pathStd = currentQ.answers[i][0];
-                    const checkPass = currentConfig.isSequential ? (val === pathStd) : AnswerEvaluator.checkAnswer(val, pathStd);
-                    if (checkPass) {
-                        isCorrect = true;
-                        selectedPathIndex = i; 
-                        std = pathStd;
-                        matched = true;
-                        break;
+            // 呼叫 AnswerEvaluator (本地法相表優先，表外詞彙才調用後端 AI；fetch 內建逾時)
+            const aiResult = await AnswerEvaluator.evaluateWithAI(
+                val,
+                currentQ.logicParams,
+                currentTargetAnswer.evalGoal,
+                currentExtractedExample
+            );
+
+            isCorrect = aiResult.isCorrect;
+            aiFeedback = aiResult.feedback || "";
+
+            if (currentTargetAnswer.evalGoal === "example" && aiResult.extractedExample) {
+                currentExtractedExample = aiResult.extractedExample;
+            }
+
+            std = `(AI動態判定: ${currentTargetAnswer.evalGoal === 'example' ? '舉例' : '立宗'})`;
+
+        } else {
+            if (currentQ.answers && Array.isArray(currentQ.answers[0]) && typeof currentQ.answers[0] !== 'object') {
+                if (subQIndex === 0) {
+                    let matched = false;
+                    for (let i = 0; i < currentQ.answers.length; i++) {
+                        const pathStd = currentQ.answers[i][0];
+                        const checkPass = currentConfig.isSequential ? (val === pathStd) : AnswerEvaluator.checkAnswer(val, pathStd);
+                        if (checkPass) {
+                            isCorrect = true;
+                            selectedPathIndex = i; 
+                            std = pathStd;
+                            matched = true;
+                            break;
+                        }
                     }
-                }
-                if (!matched) {
-                    selectedPathIndex = 0;
-                    std = currentQ.answers.map(p => p[0]).join(" 或 ");
+                    if (!matched) {
+                        selectedPathIndex = 0;
+                        std = currentQ.answers.map(p => p[0]).join(" 或 ");
+                    }
+                } else {
+                    std = currentQ.answers[selectedPathIndex][subQIndex];
+                    isCorrect = currentConfig.isSequential ? (val === std) : AnswerEvaluator.checkAnswer(val, std);
                 }
             } else {
-                std = currentQ.answers[selectedPathIndex][subQIndex];
+                std = currentTargetAnswer;
                 isCorrect = currentConfig.isSequential ? (val === std) : AnswerEvaluator.checkAnswer(val, std);
             }
-        } else {
-            std = currentTargetAnswer;
-            isCorrect = currentConfig.isSequential ? (val === std) : AnswerEvaluator.checkAnswer(val, std);
         }
+    } catch (e) {
+        console.error('判定答案時發生錯誤:', e);
+        showError('判定過程發生錯誤，請再按一次送出。');
+        return;
+    } finally {
+        isSubmitting = false;
+        if (usedThinkingUi) applyMicUiState('idle');
     }
 
     userSessionRecords.push({

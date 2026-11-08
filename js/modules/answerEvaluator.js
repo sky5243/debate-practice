@@ -1,4 +1,53 @@
 import { evaluateExampleWithKB } from '../data/sautrantikaKB.js';
+import { EVALUATE_URL } from './backendConfig.js';
+
+const AI_FETCH_TIMEOUT_MS = 15000;
+
+/**
+ * 呼叫後端 AI 評估端點（含逾時）
+ * @returns {Promise<{ok: true, data: object} | {ok: false, reason: "timeout"|"http"|"network", status?: number, detail?: string}>}
+ */
+async function postToEvaluator(payload) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_FETCH_TIMEOUT_MS);
+    try {
+        const response = await fetch(EVALUATE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            console.error(`❌ [AI 評估端點錯誤] HTTP ${response.status}:`, detail);
+            return { ok: false, reason: "http", status: response.status, detail };
+        }
+
+        const data = await response.json();
+        return { ok: true, data };
+    } catch (e) {
+        if (e.name === "AbortError") {
+            console.error(`⏱️ [AI 評估逾時] 超過 ${AI_FETCH_TIMEOUT_MS / 1000} 秒未回應:`, EVALUATE_URL);
+            return { ok: false, reason: "timeout" };
+        }
+        console.error("❌ [AI 評估連線失敗]:", e);
+        return { ok: false, reason: "network", detail: e.message };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// 依失敗原因產生給使用者看的說明
+function describeAiFailure(result) {
+    if (result.reason === "timeout") {
+        return `雲端 AI 超過 ${AI_FETCH_TIMEOUT_MS / 1000} 秒未回應（伺服器可能正在喚醒）`;
+    }
+    if (result.reason === "http") {
+        return `雲端 AI 服務回傳錯誤（HTTP ${result.status}）`;
+    }
+    return "無法連線到雲端 AI 服務";
+}
 
 export class AnswerEvaluator {
     // 💡 建立 OpenCC 轉換器快取（單例模式，確保只初始化一次以節省效能）
@@ -188,8 +237,7 @@ export class AnswerEvaluator {
      */
     static async evaluateWithAI(userAns, logicParams, evalGoal, previousExample = "") {
         const cleanUserAns = this.normalizeSTTText(this.convertToTraditional(userAns));
-        const BACKEND_URL = "https://debate-practice-8h3m.onrender.com/api/evaluate-debate";
-        // const BACKEND_URL = "http://localhost:3000/api/evaluate-debate"; // 本地測試用
+        // 後端網址由 backendConfig.js 自動判斷（localhost 開啟時連本機後端）
 
         if (evalGoal === "example") {
             // 💡 規則 1：必須依格式回答「某某有法」（例如：「瓶子有法」、「形狀有法」）
@@ -215,34 +263,26 @@ export class AnswerEvaluator {
             }
 
             // 💡 規則 3：若不在基本法相表中，轉由後端 AI 進行經部宗深度判定
-            try {
-                console.log(`🤖 [調用後端 AI 判定生僻名詞事例]: ${rawNoun}`);
-                const response = await fetch(BACKEND_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        noun: rawNoun,
-                        logicParams,
-                        evalGoal: "example"
-                    })
-                });
+            console.log(`🤖 [調用後端 AI 判定表外事例]: ${rawNoun}`);
+            const aiRes = await postToEvaluator({
+                noun: rawNoun,
+                logicParams,
+                evalGoal: "example"
+            });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    return {
-                        isCorrect: !!data.isCorrect,
-                        extractedExample: rawNoun,
-                        feedback: data.feedback || (data.isCorrect ? "AI 判定正確！" : "AI 判定不符合要求。")
-                    };
-                }
-            } catch (e) {
-                console.error("AI 事例評估連線失敗:", e);
+            if (aiRes.ok) {
+                const data = aiRes.data;
+                return {
+                    isCorrect: !!data.isCorrect,
+                    extractedExample: rawNoun,
+                    feedback: data.feedback || (data.isCorrect ? "AI 判定正確！" : "AI 判定不符合要求。")
+                };
             }
 
             return {
                 isCorrect: false,
                 extractedExample: rawNoun,
-                feedback: `事例「${rawNoun}」未在標準法相表中，且雲端 AI 服務連線未回應。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
+                feedback: `事例「${rawNoun}」未在標準法相表中，且${describeAiFailure(aiRes)}。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
             };
         } 
         else if (evalGoal === "thesis") {
@@ -270,38 +310,30 @@ export class AnswerEvaluator {
             }
 
             // 若本地字串未匹配，向後端 AI 尋求語意同義確認
-            try {
-                console.log(`🤖 [調用後端 AI 判定立宗語意]: ${cleanUserAns}`);
-                const response = await fetch(BACKEND_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        evalGoal: "thesis",
-                        previousExample,
-                        userAns: cleanUserAns,
-                        logicParams: {
-                            ...logicParams,
-                            thesisTemplate: templates
-                        }
-                    })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    return {
-                        isCorrect: !!data.isCorrect,
-                        expectedTheses,
-                        feedback: data.feedback || (data.isCorrect ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」`)
-                    };
+            console.log(`🤖 [調用後端 AI 判定立宗語意]: ${cleanUserAns}`);
+            const aiRes = await postToEvaluator({
+                evalGoal: "thesis",
+                previousExample,
+                userAns: cleanUserAns,
+                logicParams: {
+                    ...logicParams,
+                    thesisTemplate: templates
                 }
-            } catch (e) {
-                console.error("AI 立宗判定連線失敗:", e);
+            });
+
+            if (aiRes.ok) {
+                const data = aiRes.data;
+                return {
+                    isCorrect: !!data.isCorrect,
+                    expectedTheses,
+                    feedback: data.feedback || (data.isCorrect ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」`)
+                };
             }
 
             return {
                 isCorrect: false,
                 expectedTheses,
-                feedback: `立宗不符，標準立宗應為：「${expectedTheses}」`
+                feedback: `立宗不符，標準立宗應為：「${expectedTheses}」（${describeAiFailure(aiRes)}，未能進行語意複核）`
             };
         }
 

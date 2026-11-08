@@ -1,3 +1,5 @@
+import { WS_URL } from './backendConfig.js';
+
 export class SpeechService {
     constructor() {
         this.audioContext = null;
@@ -15,6 +17,7 @@ export class SpeechService {
         
         this.isConnected = false;
         this.onConnectionStateChange = null; 
+        this._startToken = 0; // 💡 啟動代號：用來取消進行中或逾時的錄音啟動流程
     }
 
     // 獨立的 WebSocket 連線方法（背景喚醒 Render 伺服器）
@@ -24,8 +27,8 @@ export class SpeechService {
         }
 
         try {
-            // this.ws = new WebSocket('ws://localhost:3000'); //本地端server測試用
-            this.ws = new WebSocket('wss://debate-practice-8h3m.onrender.com');
+            // 網址由 backendConfig.js 自動判斷：localhost 開啟時連本機後端，否則連 Render
+            this.ws = new WebSocket(WS_URL);
             
             this.ws.onopen = () => {
                 console.log("WebSocket 連線成功");
@@ -85,6 +88,7 @@ export class SpeechService {
     }
 
     // 每次按下麥克風時才動態取得硬體，用完立刻釋放，絕不發燙
+    // 💡 A4：整個啟動流程最多等 START_TIMEOUT_MS，逾時即釋放資源並回報錯誤，避免狀態卡死
     async startRecording(onStateChange, onError) {
         console.log("▶️ 1. 啟動錄音！目前 WebSocket 狀態:", this.ws ? this.ws.readyState : "未建立");
         console.log("▶️ 2. 音訊模組是否準備就緒:", this.isProcessorLoaded);
@@ -97,58 +101,97 @@ export class SpeechService {
 
         this.historyText = "";
         this.lastRawText = "";
+        this.lastTranscript = "";
+        this.isListening = true;
+
+        // 每次啟動取得一個新代號；stopRecognition() 會讓代號失效，晚到的啟動步驟就會自行放棄
+        const token = ++this._startToken;
+        const START_TIMEOUT_MS = 8000;
+        let timeoutId = null;
+
+        const timeoutPromise = new Promise((resolve) => {
+            timeoutId = setTimeout(() => resolve('timeout'), START_TIMEOUT_MS);
+        });
 
         try {
-            this.lastTranscript = "";
-            this.isListening = true;
+            const setupPromise = this._setupAudioPipeline(token);
+            // 逾時勝出後，晚到的錯誤不再需要處理；避免瀏覽器出現 unhandled rejection 警告
+            setupPromise.catch(() => {});
+            const result = await Promise.race([setupPromise, timeoutPromise]);
 
-            // 💡 修改：判斷是否已經預載 AudioContext，若無（例如中斷練習後重新開始）則當下建立
-            if (!this.audioContext || !this.isProcessorLoaded) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-                await this.audioContext.audioWorklet.addModule('pcm-processor.js');
-                this.isProcessorLoaded = true;
+            if (result === 'timeout') {
+                console.warn(`⏱️ 啟動麥克風超過 ${START_TIMEOUT_MS / 1000} 秒，已自動取消`);
+                this.stopRecognition();
+                if (onError) onError('啟動麥克風逾時，請確認已允許麥克風權限後再按一次。');
+                return false;
             }
-
-            // 💡 只有在真正按住按鈕的瞬間，才向系統呼叫麥克風硬體授權
-            this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            
-            // 喚醒預載的音訊引擎 (必須在使用者點擊事件內執行)
-            if (this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
+            if (result === 'cancelled' || token !== this._startToken) {
+                // 啟動過程中已被 stopRecognition() 取消（例如送出答案、中斷練習）
+                return false;
             }
-
-            const source = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
-            
-            this.workletNode.port.onmessage = (event) => {
-                if (!this.isListening) return;
-                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                    // 💡 下一行用來追蹤音訊封包是否有正常發送，當有卡頓不收音時再於電腦按F12檢查
-                    // console.log("正在發送音訊大小:", event.data.byteLength);
-                    this.ws.send(event.data);
-                }
-            };
-
-            source.connect(this.workletNode);
-            const dummyGain = this.audioContext.createGain();
-            dummyGain.gain.value = 0;
-            this.workletNode.connect(dummyGain);
-            dummyGain.connect(this.audioContext.destination);
 
             if (onStateChange) onStateChange('recording');
 
             // 發送配置給後端
             this.ws.send(JSON.stringify({ type: 'config', context: this.currentContext }));
-
             return true;
 
         } catch (error) {
             console.error('麥克風授權失敗或發生錯誤:', error);
-            if (onError) onError('無法存取麥克風，請檢查權限設定。');
-            this.isListening = false;
             this.stopRecognition();
+            if (onError) onError('無法存取麥克風，請檢查權限設定。');
             return false;
+        } finally {
+            clearTimeout(timeoutId);
         }
+    }
+
+    // 建立音訊管線；每個 await 之後都檢查代號，若已被取消就釋放剛取得的資源
+    async _setupAudioPipeline(token) {
+        const isCancelled = () => token !== this._startToken;
+
+        // 判斷是否已經預載 AudioContext，若無則當下建立
+        if (!this.audioContext || !this.isProcessorLoaded) {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+            await this.audioContext.audioWorklet.addModule('pcm-processor.js');
+            if (isCancelled()) return 'cancelled';
+            this.isProcessorLoaded = true;
+        }
+
+        // 只有在真正按住按鈕的瞬間，才向系統呼叫麥克風硬體授權
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (isCancelled()) {
+            // 啟動已被取消或逾時：立刻關閉這個晚到的麥克風串流，避免麥克風燈一直亮著
+            stream.getTracks().forEach(track => track.stop());
+            return 'cancelled';
+        }
+        this.mediaStream = stream;
+
+        // 喚醒音訊引擎
+        if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+            if (isCancelled()) return 'cancelled';
+        }
+
+        const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+        this.workletNode = new AudioWorkletNode(this.audioContext, 'pcm-processor');
+
+        this.workletNode.port.onmessage = (event) => {
+            if (!this.isListening) return;
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                // 💡 下一行用來追蹤音訊封包是否有正常發送，當有卡頓不收音時再於電腦按F12檢查
+                // console.log("正在發送音訊大小:", event.data.byteLength);
+                this.ws.send(event.data);
+            }
+        };
+
+        source.connect(this.workletNode);
+        const dummyGain = this.audioContext.createGain();
+        dummyGain.gain.value = 0;
+        this.workletNode.connect(dummyGain);
+        dummyGain.connect(this.audioContext.destination);
+
+        return 'ok';
     }
 
     async stopRecordingAndSend({ onStateChange }) {
@@ -161,6 +204,7 @@ export class SpeechService {
     // 核心釋放機制：徹底關閉音訊串流、AudioContext 與 Worklet，讓手機 CPU 進入休眠
     stopRecognition() {
         this.isListening = false;
+        this._startToken++; // 讓任何進行中的啟動流程失效
         
         if (this.workletNode) {
             try {
