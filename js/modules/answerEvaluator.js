@@ -105,6 +105,9 @@ export class AnswerEvaluator {
             { pattern: /[時史石十]事|實是|44|14/g, replace: "實事" },
             { pattern: /霧質|物資/g, replace: "物質" },
             { pattern: /[新心][事視適市室式]/g, replace: "心識" },
+            // 「心識」常被聽成「心是」：只在明確句型中校正，避免誤改「心是無常」等一般句子
+            { pattern: /心是有法/g, replace: "心識有法" },
+            { pattern: /心是(?=不?是)/g, replace: "心識" },
             { pattern: /[場唱]法|長[法髮]/g, replace: "常法" },
             { pattern: /[吾五]我|無窩/g, replace: "無我" },
             { pattern: /[所鎖][真爭正諍證診針][是事式氏]/g, replace: "所諍事" },
@@ -246,8 +249,11 @@ export class AnswerEvaluator {
      * @param {object} logicParams 題目邏輯條件
      * @param {string} evalGoal "example" 或是 "thesis"
      * @param {string} previousExample 當 evalGoal 是 thesis 時帶入前一題提取出的事例名詞
+     * @param {object} hooks { onAiCall: () => void } 真正要呼叫後端 AI 前觸發（用來更新畫面提示）
+     * @returns 結果物件含 source："local"（本地法相表 / 字串比對）或 "ai"（後端 AI 判定）
      */
-    static async evaluateWithAI(userAns, logicParams, evalGoal, previousExample = "") {
+    static async evaluateWithAI(userAns, logicParams, evalGoal, previousExample = "", hooks = {}) {
+        const notifyAiCall = () => { try { if (hooks.onAiCall) hooks.onAiCall(); } catch { /* ignore */ } };
         const cleanUserAns = this.normalizeSTTText(this.convertToTraditional(userAns));
         // 後端網址由 backendConfig.js 自動判斷（localhost 開啟時連本機後端）
 
@@ -258,6 +264,7 @@ export class AnswerEvaluator {
                 return {
                     isCorrect: false,
                     extractedExample: "",
+                    source: "local",
                     feedback: "格式錯誤：依規定必須回答「某某有法」（例如：「瓶子有法」）！"
                 };
             }
@@ -270,12 +277,14 @@ export class AnswerEvaluator {
                 return {
                     isCorrect: localResult.isCorrect,
                     extractedExample: rawNoun,
+                    source: "local",
                     feedback: localResult.feedback
                 };
             }
 
             // 💡 規則 3：若不在基本法相表中，轉由後端 AI 進行經部宗深度判定
             console.log(`🤖 [調用後端 AI 判定表外事例]: ${rawNoun}`);
+            notifyAiCall();
             const aiRes = await postToEvaluator({
                 noun: rawNoun,
                 logicParams,
@@ -287,17 +296,19 @@ export class AnswerEvaluator {
                 return {
                     isCorrect: !!data.isCorrect,
                     extractedExample: rawNoun,
+                    source: "ai",
                     feedback: data.feedback || (data.isCorrect ? "AI 判定正確！" : "AI 判定不符合要求。")
                 };
             }
 
             if (isQuotaExceeded(aiRes)) {
-                return { isCorrect: false, retryable: true, extractedExample: "", feedback: AI_QUOTA_MESSAGE };
+                return { isCorrect: false, retryable: true, extractedExample: "", source: "ai", feedback: AI_QUOTA_MESSAGE };
             }
 
             return {
                 isCorrect: false,
                 extractedExample: rawNoun,
+                source: "ai",
                 feedback: `事例「${rawNoun}」未在標準法相表中，且${describeAiFailure(aiRes)}。建議舉出法相表內的標準事例（如：瓶子、柱子、聲音、形狀、遍智、虛空等）！`
             };
         } 
@@ -321,12 +332,14 @@ export class AnswerEvaluator {
                 return {
                     isCorrect: true,
                     expectedTheses,
+                    source: "local",
                     feedback: "立宗正確！"
                 };
             }
 
             // 若本地字串未匹配，向後端 AI 尋求語意同義確認
             console.log(`🤖 [調用後端 AI 判定立宗語意]: ${cleanUserAns}`);
+            notifyAiCall();
             const aiRes = await postToEvaluator({
                 evalGoal: "thesis",
                 previousExample,
@@ -342,21 +355,23 @@ export class AnswerEvaluator {
                 return {
                     isCorrect: !!data.isCorrect,
                     expectedTheses,
+                    source: "ai",
                     feedback: data.feedback || (data.isCorrect ? "立宗正確！" : `立宗不符，標準立宗應為：「${expectedTheses}」`)
                 };
             }
 
             if (isQuotaExceeded(aiRes)) {
-                return { isCorrect: false, retryable: true, expectedTheses, feedback: AI_QUOTA_MESSAGE };
+                return { isCorrect: false, retryable: true, expectedTheses, source: "ai", feedback: AI_QUOTA_MESSAGE };
             }
 
             return {
                 isCorrect: false,
                 expectedTheses,
+                source: "ai",
                 feedback: `立宗不符，標準立宗應為：「${expectedTheses}」（${describeAiFailure(aiRes)}，未能進行語意複核）`
             };
         }
 
-        return { isCorrect: false, feedback: "未知的評估模式" };
+        return { isCorrect: false, source: "local", feedback: "未知的評估模式" };
     }
 }

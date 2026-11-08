@@ -615,7 +615,7 @@ function applyMicUiState(state) {
         micBtn.disabled = true;
         submitAnsBtn.disabled = true;
         userAnswerInput.disabled = true;
-        speechHint.innerText = '🧠 正在進行 AI 邏輯判定，請稍候…';
+        speechHint.innerText = '🧠 判定中，請稍候…';
     } else {
         micBtn.disabled = isTreeDiagramOpen;
         submitAnsBtn.disabled = isTreeDiagramOpen;
@@ -758,6 +758,7 @@ async function handleSubmitAnswer() {
     let std = "";
     let isCorrect = false;
     let aiFeedback = "";
+    let feedbackSource = "local"; // "local"：法相表 / 字串比對；"ai"：後端 AI 判定
 
     // 💡 空白答案視同「無法安立」（使用者的便利操作），不擋送出，交由判定邏輯處理
     const currentTargetAnswer = currentQ.answers[subQIndex];
@@ -774,7 +775,15 @@ async function handleSubmitAnswer() {
                 val,
                 currentQ.logicParams,
                 currentTargetAnswer.evalGoal,
-                currentExtractedExample
+                currentExtractedExample,
+                {
+                    // 只有真的要詢問後端 AI 時，才把提示改成 AI 字樣
+                    onAiCall: () => {
+                        speechHint.innerText = currentTargetAnswer.evalGoal === 'example'
+                            ? '🤖 法相表中沒有此例，正在詢問 AI…'
+                            : '🤖 立宗與標準不完全相同，正在請 AI 複核語意…';
+                    }
+                }
             );
 
             if (aiResult.retryable) {
@@ -791,7 +800,14 @@ async function handleSubmitAnswer() {
                 currentExtractedExample = aiResult.extractedExample;
             }
 
-            std = `(AI動態判定: ${currentTargetAnswer.evalGoal === 'example' ? '舉例' : '立宗'})`;
+            feedbackSource = aiResult.source === 'ai' ? 'ai' : 'local';
+            if (currentTargetAnswer.evalGoal === 'example') {
+                std = feedbackSource === 'ai' ? '（表外事例，由 AI 判定）' : '（依法相表判定）';
+            } else {
+                std = aiResult.expectedTheses
+                    ? `${aiResult.expectedTheses}（順序不拘）`
+                    : '（依舉例代入的立宗）';
+            }
 
         } else {
             if (currentQ.answers && Array.isArray(currentQ.answers[0]) && typeof currentQ.answers[0] !== 'object') {
@@ -827,7 +843,13 @@ async function handleSubmitAnswer() {
         return;
     } finally {
         isSubmitting = false;
-        if (usedThinkingUi) applyMicUiState('idle');
+        if (usedThinkingUi) {
+            // 清掉「判定中 / 正在詢問 AI」等進行中提示，避免殘留在畫面上
+            if (speechHint.innerText.startsWith('🧠') || speechHint.innerText.startsWith('🤖')) {
+                speechHint.innerText = DEFAULT_MIC_HINT;
+            }
+            applyMicUiState('idle');
+        }
     }
 
     userSessionRecords.push({
@@ -835,7 +857,8 @@ async function handleSubmitAnswer() {
         ans: val,
         correct: isCorrect,
         std: std === "" ? "(留空/無法安立)" : std,
-        aiFeedback: aiFeedback
+        aiFeedback: aiFeedback,
+        feedbackSource: feedbackSource
     });
 
     subQIndex++;
@@ -854,7 +877,9 @@ function renderReviewRows() {
             <strong>Q${idx + 1}: ${rec.q} ${statusIcon}</strong><br>
             👉 您的輸入：<span style="color: #2980b9;">${rec.ans || "(未填)"}</span><br>
             🎯 標準答案：<span style="color: #27ae60; font-weight: bold;">${rec.std}</span>
-            ${rec.aiFeedback ? `<br>🤖 <span style="color: #d35400; font-size: 0.9em;">AI 說明：${rec.aiFeedback}</span>` : ''}
+            ${rec.aiFeedback ? (rec.feedbackSource === 'ai'
+                ? `<br>🤖 <span style="color: #d35400; font-size: 0.9em;">AI 說明：${rec.aiFeedback}</span>`
+                : `<br>📘 <span style="color: #2c7a7b; font-size: 0.9em;">判定說明：${rec.aiFeedback}</span>`) : ''}
         </div>`;
     });
     reviewContent.innerHTML = html;
