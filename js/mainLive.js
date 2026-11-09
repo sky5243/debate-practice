@@ -84,7 +84,7 @@ const tutorBox = document.getElementById('tutorBox');
 const reviewPanel = document.getElementById('reviewPanel');
 const reviewTitle = document.getElementById('reviewTitle');
 const reviewContent = document.getElementById('reviewContent');
-const DEFAULT_MIC_HINT = '💡 【操作口訣】長按說話 ➔ 放開定稿。若要修改，點擊文字缺口處，再次長按補唸即可插入。';
+const DEFAULT_MIC_HINT = '💡 【操作口訣】長按說話 ➔ 放開定稿。答案較長，建議說完一句先放開，想好次句，再長按說話，依此類推。若要修改，點擊文字缺口處，再次長按補唸即可插入。';
 
 const recitationPanel = document.getElementById('recitationPanel');
 const modeReciteTab = document.getElementById('modeReciteTab');
@@ -609,7 +609,7 @@ function applyMicUiState(state) {
         micBtn.classList.add('recording');
         micBtn.disabled = false;
         submitAnsBtn.disabled = true;
-        speechHint.innerText = '🔴 【口訣：按住 ➔ 看到紅燈 ➔ 穩聲說話 ➔ 放開】錄音中...';
+        speechHint.innerText = '🔴 【按住 ➔ 看到紅燈 ➔ 穩聲說話 ➔ 放開】錄音中…要稍微思考時，請先放開，想好再長按說話';
         hideError();        
     } else if (state === 'thinking') {
         micBtn.classList.add('thinking');
