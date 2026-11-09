@@ -594,7 +594,8 @@ function getCurrentDebateContext() {
         } else {
             expectedAnswers.push(currentQ.answers[subQIndex]);
         }
-        const validAnswers = expectedAnswers.filter(ans => ans).join(" 或 ");
+        // 💡 只放入文字型的預期答案（K1/K2 的 AI 判定題答案是物件，放入會變成「[object Object]」）
+        const validAnswers = expectedAnswers.filter(ans => typeof ans === 'string' && ans).join(" 或 ");
         if (validAnswers) {
             context += ` (預期使用者的回答可能是：「${validAnswers}」)`;
         }

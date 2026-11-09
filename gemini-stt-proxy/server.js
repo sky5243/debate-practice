@@ -250,10 +250,19 @@ const server = app.listen(port, () => {
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws) => {
-    console.log('🔗 [1/3] 前端網頁已連線至 Proxy');
+// 💡 放開麥克風後多久沒收到新聲音，就結束該次 Gemini 連線並寫出診斷摘要
+const SESSION_IDLE_MS = 8000;
+let connSeq = 0;
+
+wss.on('connection', (ws, req) => {
+    const connId = (++connSeq).toString(36) + Math.random().toString(36).slice(2, 4);
+    const ua = req.headers['user-agent'] || '';
+    const device = /Android|iPhone|iPad|Mobile/i.test(ua) ? '手機' : '電腦';
+    console.log(`🔗 [1/3] 前端網頁已連線至 Proxy（連線 ${connId}，${device}）`);
     const apiKey = process.env.GEMINI_API_KEY;
     let geminiWs = null;
+    let session = null;      // 目前這次按麥克風的診斷資料
+    let sessionSeq = 0;
 
     if (!apiKey) {
         console.error('❌ 未在 .env 找到 GEMINI_API_KEY');
@@ -262,18 +271,61 @@ wss.on('connection', (ws) => {
         return;
     }
 
+    // 寫出一次錄音的診斷摘要（每次錄音只寫一次）
+    function endSession(s, reason) {
+        if (!s || s.ended) return;
+        s.ended = true;
+        clearTimeout(s.idleTimer);
+        const at = (t) => (t == null ? '-' : `${t - s.t0}ms`);
+        const states = [...s.speechStates].join('/') || '-';
+        console.log(
+            `📊 [連線 ${connId} 錄音 #${s.no}] 收到聲音 ${(s.audioBytes / 32000).toFixed(2)} 秒` +
+            `（Gemini 未就緒而丟棄 ${(s.droppedBytes / 32000).toFixed(2)} 秒）、最大音量 ${s.maxAmp}/32767、` +
+            `Gemini 連線 ${at(s.openAt)}、設定完成 ${at(s.setupAt)}、首字 ${at(s.firstTextAt)}、文字 ${s.textCount} 段、` +
+            `說話狀態 ${states}、結束原因：${reason}`
+        );
+    }
+
+    function closeGemini(gws) {
+        try {
+            if (gws && (gws.readyState === WebSocket.OPEN || gws.readyState === WebSocket.CONNECTING)) gws.close(1000, 'session ended');
+        } catch { /* ignore */ }
+    }
+
+    // 一段時間沒收到聲音（已放開麥克風）就結束該次 Gemini 連線
+    function armIdleTimer(s, gws) {
+        clearTimeout(s.idleTimer);
+        s.idleTimer = setTimeout(() => {
+            endSession(s, `放開麥克風後 ${SESSION_IDLE_MS / 1000} 秒無新聲音`);
+            closeGemini(gws);
+        }, SESSION_IDLE_MS);
+    }
+
     ws.on('message', (message, isBinary) => {
         if (!isBinary) {
             try {
                 const data = JSON.parse(message.toString());
                 if (data.type === 'config') {
-                    console.log('⚙️ [2/3] 正在建立 Gemini 3.5 Transcribe Live 連線...');
-                    const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-                    geminiWs = new WebSocket(geminiUrl);
+                    // 💡 新的一次按壓：先結束並關閉上一次的 Gemini 連線，避免連線累積
+                    if (session) endSession(session, '使用者再次按下麥克風');
+                    closeGemini(geminiWs);
 
-                    geminiWs.on('open', () => {
+                    console.log('⚙️ [2/3] 正在建立 Gemini 3.5 Transcribe Live 連線...');
+                    const s = {
+                        no: ++sessionSeq, t0: Date.now(), audioBytes: 0, droppedBytes: 0, maxAmp: 0,
+                        openAt: null, setupAt: null, firstTextAt: null, textCount: 0,
+                        speechStates: new Set(), ended: false, idleTimer: null
+                    };
+                    session = s;
+                    const geminiUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+                    const gws = new WebSocket(geminiUrl);
+                    geminiWs = gws;
+                    armIdleTimer(s, gws);
+
+                    gws.on('open', () => {
+                        s.openAt = Date.now();
                         console.log('✅ [3/3] 成功連線！送出強制繁中與辯論專用詞彙設定...');
-                        
+
                         // 動態解析前端傳來的題目脈絡詞彙，提升辨識率
                         const contextWords = data.context ? data.context.split(/[，。、\s：（）\(\)「」"]+/).filter(w => w.length >= 2) : [];
                         const defaultBaseVocab = [
@@ -300,23 +352,30 @@ wss.on('connection', (ws) => {
                                 }
                             }
                         };
-                        geminiWs.send(JSON.stringify(setupMsg));
+                        gws.send(JSON.stringify(setupMsg));
                     });
 
-                    geminiWs.on('message', (geminiMsg) => {
+                    gws.on('message', (geminiMsg) => {
                         try {
                             const res = JSON.parse(geminiMsg.toString());
-                            
-                            let text = res.serverContent?.interimInputTranscription?.text || 
-                                         res.serverContent?.inputTranscription?.text ||
-                                         res.serverContent?.modelTurn?.parts?.[0]?.text;
+                            if (res.setupComplete && s.setupAt === null) s.setupAt = Date.now();
+                            const sc = res.serverContent || {};
+                            if (sc.speechState !== undefined) {
+                                const st = typeof sc.speechState === 'string' ? sc.speechState : JSON.stringify(sc.speechState);
+                                s.speechStates.add(st.slice(0, 40));
+                            }
+
+                            // 💡 只轉送「語音轉文字」的內容；不轉送模型自行生成的回覆（modelTurn）
+                            let text = sc.interimInputTranscription?.text || sc.inputTranscription?.text;
 
                             if (text) {
                                 // 💡 升級版淨化：同時過濾所有全形/半形標點符號、問號、句號、逗號以及前後空白
                                 text = text.trim().replace(/[！？，。？！\?,\.\s]+/g, '');
                                 if (text) {
+                                    if (s.firstTextAt === null) s.firstTextAt = Date.now();
+                                    s.textCount++;
                                     console.log(`🗣️ 辨識文字 (全面淨化後): ${text}`);
-                                    ws.send(JSON.stringify({ transcript: text }));
+                                    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ transcript: text }));
                                 }
                             }
                         } catch (e) {
@@ -324,14 +383,30 @@ wss.on('connection', (ws) => {
                         }
                     });
 
-                    geminiWs.on('error', (err) => console.error('Gemini API 錯誤：', err.message));
+                    gws.on('close', (code, reasonBuf) => {
+                        const reason = reasonBuf ? reasonBuf.toString() : '';
+                        endSession(s, `Gemini 關閉連線 (代碼 ${code}${reason ? '：' + reason.slice(0, 200) : ''})`);
+                    });
+
+                    gws.on('error', (err) => console.error(`Gemini API 錯誤（連線 ${connId} 錄音 #${s.no}）：`, err.message));
                 }
             } catch (e) {
                 console.error("解析前端設定失敗", e);
             }
-        } 
+        }
         else {
+            const s = session;
+            if (s && !s.ended) {
+                // 診斷：統計最大音量（判斷是否整段都是靜音）
+                const len = message.length - (message.length % 2);
+                for (let i = 0; i < len; i += 2) {
+                    const v = Math.abs(message.readInt16LE(i));
+                    if (v > s.maxAmp) s.maxAmp = v;
+                }
+                armIdleTimer(s, geminiWs);
+            }
             if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+                if (s && !s.ended) s.audioBytes += message.length;
                 const base64Audio = message.toString('base64');
                 const audioMsg = {
                     realtimeInput: {
@@ -342,12 +417,15 @@ wss.on('connection', (ws) => {
                     }
                 };
                 geminiWs.send(JSON.stringify(audioMsg));
+            } else if (s && !s.ended) {
+                s.droppedBytes += message.length;
             }
         }
     });
 
     ws.on('close', () => {
-        console.log('🔌 前端連線中斷');
-        if (geminiWs) geminiWs.close();
+        console.log(`🔌 前端連線中斷（連線 ${connId}）`);
+        if (session) endSession(session, '前端連線中斷');
+        closeGemini(geminiWs);
     });
 });
